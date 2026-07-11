@@ -3,10 +3,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { MapPin, Bed, Bath, Car, CheckCircle2, MessageCircle, Phone, ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import type { Database } from "@/types/supabase";
-
-type Property = Database["public"]["Tables"]["properties"]["Row"];
-
+interface Property {
+  id: string;
+  name: string;
+  address: string;
+  estate: string;
+  county: string;
+  landlord_id: string;
+  amenities: Record<string, boolean> | null;
+  created_at: string;
+  updated_at: string;
+}
 export default async function PropertyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
