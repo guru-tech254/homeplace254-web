@@ -26,8 +26,7 @@ export default function RegisterPage() {
 
   try {
     const supabase = supabaseAuth;
-    
-    // ✅ FIX: Await the promise first, THEN destructure error/data
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: formData.email,
       password: formData.password,
@@ -43,7 +42,7 @@ export default function RegisterPage() {
       throw signUpError;
     }
 
-    if (data.user) {
+    if (data?.user) {
       alert("Registration successful! Please check your email to confirm your account.");
       router.push("/auth/login");
     }
@@ -54,18 +53,6 @@ export default function RegisterPage() {
     setLoading(false);
   }
 };
-
-      if (signUpError) throw signUpError;
-
-      // Show success message and redirect to login
-      alert("Registration successful! Please check your email to confirm your account before logging in.");
-      router.push("/auth/login");
-    } catch (err: any) {
-      setError(err.message || "Registration failed. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-mist-white p-4">
