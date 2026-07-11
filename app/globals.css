@@ -1,26 +1,31 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* Primary Brand & Headers */
+  --color-deep-navy: #123A56;
+  
+  /* ✅ UPDATED to match SVG logo gradient start color exactly */
+  --color-ocean-blue: #1E5F8C;
+  
+  /* CTAs, Verified Badges, Highlights */
+  --color-amber-gold: #F2A93B;
+  
+  /* Cool-toned Background */
+  --color-mist-white: #F5F8FA;
+  
+  /* Body Text */
+  --color-ink: #16232C;
+  
+  /* Verified / Available Tags */
+  --color-signal-green: #2F9E5B;
+
+  /* Logo Font */
+  --font-sans: 'Poppins', Arial, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Base styles */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-mist-white);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }
