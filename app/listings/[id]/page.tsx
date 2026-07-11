@@ -19,6 +19,7 @@ interface ListingDetail {
   parking: boolean;
   primary_image_url: string;
   status: string;
+  created_at: string; // ✅ ADD THIS LINE
   property: {
     name: string;
     address: string;
