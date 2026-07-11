@@ -158,9 +158,7 @@ export default function ChatWidget({ listingId, landlordId, onClose }: ChatWidge
       )
       .subscribe();
 
-    return () => {
-  void supabaseAuth.removeChannel(channel);
-};
+    return () => supabaseAuth.removeChannel(channel);
   }, [conversationId]);
 
   // Auto-scroll to bottom
