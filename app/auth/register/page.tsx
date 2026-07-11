@@ -20,35 +20,40 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  e.preventDefault();
+  setLoading(true);
+  setError(null);
 
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    if (formData.password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const supabase = supabaseAuth;
-      
-      const { error: signUpError } = supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-            phone: formData.phone,
-            role: formData.role,
-          },
+  try {
+    const supabase = supabaseAuth;
+    
+    // ✅ FIX: Await the promise first, THEN destructure error/data
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: formData.email,
+      password: formData.password,
+      options: {
+        data: {
+          full_name: formData.fullName,
+          phone: formData.phone,
         },
-      });
+      },
+    });
+
+    if (signUpError) {
+      throw signUpError;
+    }
+
+    if (data.user) {
+      alert("Registration successful! Please check your email to confirm your account.");
+      router.push("/auth/login");
+    }
+  } catch (err: any) {
+    console.error("Registration error:", err);
+    setError(err.message || "Failed to create account. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
 
       if (signUpError) throw signUpError;
 
