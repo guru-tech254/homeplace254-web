@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabaseAuth } from "@/lib/supabase/auth-client";
-import { ArrowLeft, Save, Home, MapPin, Bed, Bath, Car, DollarSign, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, Save, Home, Bed, Bath, Car, DollarSign, Upload, X, Image as ImageIcon, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 export default function EditListingPage() {
@@ -13,6 +13,7 @@ export default function EditListingPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [properties, setProperties] = useState<{ id: string; name: string }[]>([]);
   
   const [formData, setFormData] = useState({
@@ -55,11 +56,11 @@ export default function EditListingPage() {
         .from("listings")
         .select("*")
         .eq("id", listingId)
-        .eq("landlord_id", user.id) // Security: only allow editing own listings
+        .eq("landlord_id", user.id)
         .single();
 
       if (error || !data) {
-        alert("Listing not found or you don't have permission to edit it.");
+        alert("Listing not found or you don't have permission.");
         router.push("/landlord/listings");
         return;
       }
@@ -89,6 +90,50 @@ export default function EditListingPage() {
       ...prev,
       [name]: type === "checkbox" ? (e.target as HTMLInputElement).checked : value
     }));
+  };
+
+  // ✅ NEW: Handle Direct Image Upload
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type and size (max 5MB)
+    if (!file.type.startsWith('image/')) {
+      alert("Please select an image file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image must be less than 5MB.");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const { data: { user } } = await supabaseAuth.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Create unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}/${listingId}-${Date.now()}.${fileExt}`;
+
+      // Upload to Supabase Storage bucket named 'listings'
+      const { error: uploadError } = await supabaseAuth.storage
+        .from('listings')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabaseAuth.storage
+        .from('listings')
+        .getPublicUrl(fileName);
+
+      setFormData(prev => ({ ...prev, primary_image_url: urlData.publicUrl }));
+    } catch (err: any) {
+      alert("Upload failed: " + err.message);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -134,12 +179,63 @@ export default function EditListingPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-deep-navy">Edit Listing</h1>
-          <p className="text-sm text-ink/70">Update details for this rental unit.</p>
+          <p className="text-sm text-ink/70">Update details and upload new images.</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-ocean-blue/10 p-8 space-y-6">
         
+        {/* ✅ NEW: Direct Image Upload Section */}
+        <div>
+          <label className="block text-sm font-semibold text-deep-navy mb-2">Primary Image</label>
+          <div className="flex items-start gap-4">
+            {/* Current Image Preview */}
+            <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-ocean-blue/20 bg-mist-white shrink-0">
+              {formData.primary_image_url ? (
+                <img src={formData.primary_image_url} alt="Current" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-ink/30">
+                  <ImageIcon size={32} />
+                </div>
+              )}
+              {uploading && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                  <Loader2 size={24} className="animate-spin text-white" />
+                </div>
+              )}
+            </div>
+
+            {/* Upload Controls */}
+            <div className="flex-1 space-y-3">
+              <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-ocean-blue/30 rounded-lg cursor-pointer hover:border-ocean-blue hover:bg-ocean-blue/5 transition-all group">
+                <Upload size={20} className="text-ocean-blue group-hover:scale-110 transition-transform" />
+                <span className="text-sm font-medium text-deep-navy">
+                  {uploading ? "Uploading..." : "Click to Upload New Image"}
+                </span>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleImageUpload} 
+                  disabled={uploading}
+                  className="hidden" 
+                />
+              </label>
+              <p className="text-xs text-ink/50">Max 5MB • JPG, PNG, WebP supported</p>
+              
+              {/* Remove Image Button */}
+              {formData.primary_image_url && !uploading && (
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, primary_image_url: "" }))}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 transition-colors"
+                >
+                  <X size={12} /> Remove current image
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Property Selection */}
         <div>
           <label className="block text-sm font-semibold text-deep-navy mb-2">Property</label>
@@ -295,27 +391,6 @@ export default function EditListingPage() {
           </div>
         </div>
 
-        {/* Image URL */}
-        <div>
-          <label className="block text-sm font-semibold text-deep-navy mb-2">Primary Image URL</label>
-          <div className="relative">
-            <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 h-5 w-5" />
-            <input
-              type="url"
-              name="primary_image_url"
-              value={formData.primary_image_url}
-              onChange={handleChange}
-              placeholder="https://example.com/image.jpg"
-              className="w-full pl-10 pr-4 py-3 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
-            />
-          </div>
-          {formData.primary_image_url && (
-            <div className="mt-3 h-32 w-full rounded-lg overflow-hidden border border-ocean-blue/10">
-              <img src={formData.primary_image_url} alt="Preview" className="w-full h-full object-cover" />
-            </div>
-          )}
-        </div>
-
         {/* Actions */}
         <div className="flex justify-end gap-4 pt-6 border-t border-ocean-blue/10">
           <Link 
@@ -326,10 +401,10 @@ export default function EditListingPage() {
           </Link>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || uploading}
             className="flex items-center gap-2 px-8 py-2.5 bg-amber-gold text-white rounded-lg font-bold hover:brightness-90 transition-all disabled:opacity-50"
           >
-            <Save size={18} />
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
             {saving ? "Saving Changes..." : "Update Listing"}
           </button>
         </div>
