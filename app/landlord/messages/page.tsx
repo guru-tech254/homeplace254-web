@@ -1,26 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabaseAuth } from "@/lib/supabase/auth-client";
-import { Search, MessageSquare, User, ArrowLeft, Send } from "lucide-react";
-import Link from "next/link";
+import { initChatSession } from "@/lib/chat-session";
+import { Search, MessageSquare, User, ArrowLeft, Send, Loader2 } from "lucide-react";
 
 interface Conversation {
   id: string;
   listing_id: string;
-  seeker_id: string | null;
-  seeker_visitor_id: string | null;
+  seeker_session_id: string;
   created_at: string;
-  listing: {
-    title: string;
-    primary_image_url: string;
-  };
-  lastMessage: {
-    content: string;
-    created_at: string;
-    sender_id: string | null;
-    sender_visitor_id: string | null;
-  } | null;
+  listing: { title: string; primary_image_url: string };
+  lastMessage: { content: string; created_at: string; sender_role: string } | null;
 }
 
 export default function LandlordMessagesPage() {
@@ -30,57 +21,38 @@ export default function LandlordMessagesPage() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // ✅ FIX: Functions declared BEFORE useEffect
+  // ✅ REQUIRED: Initialize session header for RLS
+  useEffect(() => {
+    initChatSession();
+  }, []);
+
   const fetchConversations = async () => {
     const { data: { user } } = await supabaseAuth.auth.getUser();
     if (!user) return;
 
-    try {
-      // Fetch conversations with latest message preview
-      const { data, error } = await supabaseAuth
-        .from("conversations")
-        .select(`
-          id,
-          listing_id,
-          seeker_id,
-          seeker_visitor_id,
-          created_at,
-          listing:listing_id (
-            title,
-            primary_image_url
-          ),
-          messages:messages(
-            content,
-            created_at,
-            sender_id,
-            sender_visitor_id
-          )
-        `)
-        .eq("landlord_id", user.id)
-        .order("created_at", { ascending: false });
+    const { data, error } = await supabaseAuth
+      .from("conversations")
+      .select(`
+        id, listing_id, seeker_session_id, created_at,
+        listing:listing_id (title, primary_image_url),
+        messages:messages(content, created_at, sender_role)
+      `)
+      .eq("landlord_id", user.id)
+      .order("created_at", { ascending: false });
 
-      if (error) console.error(error);
-      else {
-        // Process to get only the last message
-        const processed = (data || []).map((conv: any) => ({
-          ...conv,
-          lastMessage: conv.messages?.[0] || null, // Assuming order is desc or we take first if fetched correctly
-        }));
-        
-        // Sort by last message time if available, else creation time
-        processed.sort((a, b) => 
-          new Date(b.lastMessage?.created_at || b.created_at).getTime() - 
-          new Date(a.lastMessage?.created_at || a.created_at).getTime()
-        );
-
-        setConversations(processed);
-      }
-    } catch (err) {
-      console.error("Error fetching conversations:", err);
-    } finally {
-      setLoading(false);
+    if (!error && data) {
+      const processed = data.map((conv: any) => ({
+        ...conv,
+        lastMessage: conv.messages?.[conv.messages.length - 1] || null,
+      })).sort((a: any, b: any) => 
+        new Date(b.lastMessage?.created_at || b.created_at).getTime() - 
+        new Date(a.lastMessage?.created_at || a.created_at).getTime()
+      );
+      setConversations(processed);
     }
+    setLoading(false);
   };
 
   const fetchMessages = async (convId: string) => {
@@ -89,7 +61,6 @@ export default function LandlordMessagesPage() {
       .select("*")
       .eq("conversation_id", convId)
       .order("created_at", { ascending: true });
-
     if (data) setMessages(data);
   };
 
@@ -97,40 +68,58 @@ export default function LandlordMessagesPage() {
     if (!newMessage.trim() || !activeConvId) return;
 
     const { data: { user } } = await supabaseAuth.auth.getUser();
+    if (!user) return;
+
+    const content = newMessage.trim();
+    const tempMsg = {
+      id: `temp-${Date.now()}`,
+      conversation_id: activeConvId,
+      sender_role: 'landlord',
+      content,
+      created_at: new Date().toISOString(),
+    };
     
+    setMessages(prev => [...prev, tempMsg]);
+    setNewMessage("");
+
     const { error } = await supabaseAuth.from("messages").insert({
       conversation_id: activeConvId,
-      sender_id: user?.id,
-      content: newMessage.trim(),
+      sender_role: 'landlord',
+      content,
     });
 
-    if (!error) {
-      setNewMessage("");
-      // Optimistic update or refetch
-      fetchMessages(activeConvId);
-      fetchConversations(); // Update preview in sidebar
+    if (error) {
+      setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
+      setNewMessage(content);
+      alert(`Failed to send: ${error.message}`);
+    } else {
+      fetchConversations();
     }
   };
 
-  useEffect(() => {
-    fetchConversations();
-  }, []);
-
-  useEffect(() => {
-    if (activeConvId) {
-      fetchMessages(activeConvId);
-    }
+  useEffect(() => { fetchConversations(); }, []);
+  useEffect(() => { 
+    if (activeConvId) fetchMessages(activeConvId); 
   }, [activeConvId]);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
 
-  const filteredConversations = conversations.filter(c => 
+  const filtered = conversations.filter(c => 
     c.listing?.title?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const active = conversations.find(c => c.id === activeConvId);
 
-  const activeConversation = conversations.find(c => c.id === activeConvId);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
+        <Loader2 className="animate-spin text-ocean-blue" size={32} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-white rounded-xl shadow-sm border border-ocean-blue/10 overflow-hidden">
-      {/* Header */}
       <div className="p-4 border-b border-ocean-blue/10 flex items-center justify-between bg-mist-white">
         <h1 className="text-xl font-bold text-deep-navy flex items-center gap-2">
           <MessageSquare size={20} /> Messages
@@ -148,15 +137,12 @@ export default function LandlordMessagesPage() {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar: Conversation List */}
         <div className={`w-full md:w-80 border-r border-ocean-blue/10 bg-white flex flex-col ${activeConvId ? 'hidden md:flex' : 'flex'}`}>
-          {loading ? (
-            <div className="p-4 text-center text-ink/50">Loading...</div>
-          ) : filteredConversations.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="p-8 text-center text-ink/50 text-sm">No messages yet.</div>
           ) : (
             <div className="overflow-y-auto flex-1">
-              {filteredConversations.map((conv) => (
+              {filtered.map((conv) => (
                 <button
                   key={conv.id}
                   onClick={() => setActiveConvId(conv.id)}
@@ -175,9 +161,7 @@ export default function LandlordMessagesPage() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-deep-navy text-sm truncate">{conv.listing?.title}</p>
                       <p className="text-xs text-ink/60 truncate mt-1">
-                        {conv.lastMessage?.sender_id === conv.seeker_id || conv.lastMessage?.sender_visitor_id === conv.seeker_visitor_id 
-                          ? "Seeker: " 
-                          : "You: "}
+                        {conv.lastMessage?.sender_role === 'seeker' ? "Seeker: " : "You: "}
                         {conv.lastMessage?.content || "Start a conversation..."}
                       </p>
                     </div>
@@ -188,49 +172,37 @@ export default function LandlordMessagesPage() {
           )}
         </div>
 
-        {/* Main Chat Area */}
         <div className={`flex-1 flex flex-col bg-mist-white ${!activeConvId ? 'hidden md:flex' : 'flex'}`}>
-          {activeConvId && activeConversation ? (
+          {activeConvId && active ? (
             <>
-              {/* Chat Header */}
               <div className="p-4 border-b border-ocean-blue/10 bg-white flex items-center gap-3">
-                <button 
-                  onClick={() => setActiveConvId(null)} 
-                  className="md:hidden text-ink/60 hover:text-deep-navy"
-                >
+                <button onClick={() => setActiveConvId(null)} className="md:hidden text-ink/60 hover:text-deep-navy">
                   <ArrowLeft size={20} />
                 </button>
                 <div>
-                  <h3 className="font-bold text-deep-navy text-sm">{activeConversation.listing?.title}</h3>
+                  <h3 className="font-bold text-deep-navy text-sm">{active.listing?.title}</h3>
                   <p className="text-xs text-ink/50">Inquiry about this property</p>
                 </div>
               </div>
 
-              {/* Messages List */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.map((msg) => {
-                  // Determine if message is from landlord (current user)
-                  // Note: In landlord view, landlord is always "me"
-                  const isMe = msg.sender_id !== activeConversation.seeker_id && msg.sender_visitor_id !== activeConversation.seeker_visitor_id;
-                  
-                  return (
-                    <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[70%] px-4 py-2.5 rounded-2xl text-sm break-words ${
-                        isMe 
-                          ? "bg-deep-navy text-white rounded-br-none" 
-                          : "bg-white border border-ocean-blue/10 text-deep-navy rounded-bl-none shadow-sm"
-                      }`}>
-                        {msg.content}
-                        <div className={`text-[10px] mt-1 opacity-70 ${isMe ? "text-white/70" : "text-ink/50"}`}>
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
+                {messages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.sender_role === 'landlord' ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[70%] px-4 py-2.5 rounded-2xl text-sm break-words ${
+                      msg.sender_role === 'landlord' 
+                        ? "bg-deep-navy text-white rounded-br-none" 
+                        : "bg-white border border-ocean-blue/10 text-deep-navy rounded-bl-none shadow-sm"
+                    }`}>
+                      {msg.content}
+                      <div className={`text-[10px] mt-1 opacity-70 ${msg.sender_role === 'landlord' ? "text-white/70" : "text-ink/50"}`}>
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
               </div>
 
-              {/* Input Area */}
               <div className="p-4 bg-white border-t border-ocean-blue/10 flex gap-2">
                 <input
                   type="text"

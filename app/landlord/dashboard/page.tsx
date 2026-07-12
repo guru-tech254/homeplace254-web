@@ -27,27 +27,23 @@ export default function LandlordDashboardPage() {
   const [userData, setUserData] = useState<{ kyc_status: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ FIX: Function declared BEFORE useEffect to satisfy React Hooks rules
   const fetchDashboardData = async () => {
     const { data: { user } } = await supabaseAuth.auth.getUser();
     if (!user) return;
 
     try {
-      // Fetch current user's verification status
       const { data: userData } = await supabaseAuth
         .from("users")
         .select("kyc_status")
         .eq("id", user.id)
         .single();
 
-      // Fetch Properties
       const { data: propsData } = await supabaseAuth
         .from("properties")
         .select("id, name, estate, county, total_units")
         .eq("landlord_id", user.id)
         .order("created_at", { ascending: false });
 
-      // Fetch Tenants for calculations
       const { data: tenantsData } = await supabaseAuth
         .from("tenants")
         .select("id, status, monthly_rent")
@@ -56,7 +52,6 @@ export default function LandlordDashboardPage() {
       if (propsData) setProperties(propsData);
       setUserData(userData);
 
-      // Calculate Metrics
       const totalUnits = propsData?.reduce((sum, p) => sum + (p.total_units || 0), 0) || 0;
       const activeTenants = tenantsData?.filter(t => t.status === "active").length || 0;
       const overdueTenants = tenantsData?.filter(t => t.status === "overdue").length || 0;
@@ -87,25 +82,25 @@ export default function LandlordDashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header with Add Tenant Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6 md:space-y-8 pb-8">
+      {/* ✅ MOBILE-OPTIMIZED HEADER */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-deep-navy md:text-3xl">Landlord Dashboard</h1>
-          <p className="mt-1 text-ink/70">Overview of your properties, tenants, and income.</p>
+          <p className="mt-1 text-sm text-ink/70 md:text-base">Overview of your properties, tenants, and income.</p>
         </div>
         
         <Link
           href="/landlord/tenants/new"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-gold px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-90 hover:shadow-md"
+          className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg bg-amber-gold px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-90 hover:shadow-md active:scale-95"
         >
           <UserPlus size={18} />
           Add New Tenant
         </Link>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* ✅ RESPONSIVE STATS GRID: 1 col mobile, 2 col tablet, 4 col desktop */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
           title="Total Properties" 
           value={stats?.totalProperties || 0} 
@@ -139,18 +134,17 @@ export default function LandlordDashboardPage() {
       {/* Monthly Income Banner */}
       <div className="rounded-xl bg-gradient-to-r from-deep-navy to-ocean-blue p-6 text-white shadow-lg">
         <p className="text-sm font-medium text-white/80">Projected Monthly Income</p>
-        <p className="mt-2 text-3xl font-bold">KES {(stats?.monthlyIncome || 0).toLocaleString()}</p>
-        <p className="mt-1 text-sm text-white/70">From {stats?.totalTenants || 0} active tenants across {stats?.totalProperties || 0} properties</p>
+        <p className="mt-2 text-2xl font-bold md:text-3xl">KES {(stats?.monthlyIncome || 0).toLocaleString()}</p>
+        <p className="mt-1 text-xs text-white/70 md:text-sm">From {stats?.totalTenants || 0} active tenants across {stats?.totalProperties || 0} properties</p>
       </div>
 
-      {/* Quick Actions & Verification Status */}
+      {/* ✅ VERTICAL QUICK ACTIONS ON MOBILE */}
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Add New Property */}
         <Link 
           href="/landlord/properties/new"
-          className="flex items-center gap-4 rounded-xl bg-white p-6 shadow-sm border border-ocean-blue/10 transition-all hover:shadow-md hover:border-ocean-blue/30"
+          className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm border border-ocean-blue/10 transition-all hover:shadow-md hover:border-ocean-blue/30 active:scale-[0.98]"
         >
-          <div className="rounded-lg bg-deep-navy p-3 text-white">
+          <div className="shrink-0 rounded-lg bg-deep-navy p-3 text-white">
             <PlusCircle size={24} />
           </div>
           <div>
@@ -159,12 +153,11 @@ export default function LandlordDashboardPage() {
           </div>
         </Link>
 
-        {/* Add New Listing */}
         <Link 
           href="/landlord/listings/new"
-          className="flex items-center gap-4 rounded-xl bg-white p-6 shadow-sm border border-ocean-blue/10 transition-all hover:shadow-md hover:border-ocean-blue/30"
+          className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm border border-ocean-blue/10 transition-all hover:shadow-md hover:border-ocean-blue/30 active:scale-[0.98]"
         >
-          <div className="rounded-lg bg-amber-gold p-3 text-white">
+          <div className="shrink-0 rounded-lg bg-amber-gold p-3 text-white">
             <Home size={24} />
           </div>
           <div>
@@ -173,14 +166,13 @@ export default function LandlordDashboardPage() {
           </div>
         </Link>
 
-        {/* Verification Status Card */}
         <VerificationStatusCard kycStatus={userData?.kyc_status || 'identity_pending'} />
       </div>
 
       {/* Properties Quick Access List */}
       <div>
-        <h2 className="mb-4 text-lg font-bold text-deep-navy">Your Properties</h2>
-        <p className="text-sm text-ink/70 mb-4">Click a property to manage tenants, view occupancy, and track income.</p>
+        <h2 className="mb-2 text-lg font-bold text-deep-navy md:mb-4">Your Properties</h2>
+        <p className="mb-4 text-sm text-ink/70">Click a property to manage tenants, view occupancy, and track income.</p>
         
         {properties.length === 0 ? (
           <div className="rounded-xl bg-white p-8 text-center border border-ocean-blue/10">
@@ -191,12 +183,12 @@ export default function LandlordDashboardPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {properties.map((prop) => (
               <Link 
                 key={prop.id} 
                 href={`/landlord/properties/${prop.id}`}
-                className="group rounded-xl bg-white p-5 shadow-sm border border-ocean-blue/10 transition-all hover:shadow-md hover:border-ocean-blue/30"
+                className="group rounded-xl bg-white p-5 shadow-sm border border-ocean-blue/10 transition-all hover:shadow-md hover:border-ocean-blue/30 active:scale-[0.98]"
               >
                 <div className="flex items-start justify-between mb-3">
                   <h3 className="font-bold text-deep-navy line-clamp-1">{prop.name}</h3>
@@ -226,13 +218,13 @@ function StatCard({ title, value, icon, color, link }: {
   link: string;
 }) {
   return (
-    <Link href={link} className="group rounded-xl bg-white p-6 shadow-sm border border-ocean-blue/10 transition-all hover:shadow-md">
+    <Link href={link} className="group rounded-xl bg-white p-5 shadow-sm border border-ocean-blue/10 transition-all hover:shadow-md active:scale-[0.98]">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-ink/70">{title}</p>
           <p className="mt-2 text-2xl font-bold text-deep-navy">{value}</p>
         </div>
-        <div className={`rounded-lg ${color} p-3 text-white`}>
+        <div className={`rounded-lg ${color} p-3 text-white shrink-0`}>
           {icon}
         </div>
       </div>
@@ -247,59 +239,29 @@ function VerificationStatusCard({ kycStatus }: { kycStatus: string }) {
   const getStatusConfig = (status: string) => {
     switch (status) {
       case 'fully_verified':
-        return {
-          bg: 'bg-signal-green',
-          icon: <Shield size={24} />,
-          title: 'Verified',
-          desc: 'Account fully verified',
-          color: 'text-signal-green'
-        };
+        return { bg: 'bg-signal-green', icon: <Shield size={24} />, title: 'Verified', desc: 'Account fully verified', color: 'text-signal-green' };
       case 'identity_pending':
-        return {
-          bg: 'bg-amber-gold',
-          icon: <Shield size={24} />,
-          title: 'Pending Review',
-          desc: 'ID verification in progress',
-          color: 'text-amber-gold'
-        };
+        return { bg: 'bg-amber-gold', icon: <Shield size={24} />, title: 'Pending Review', desc: 'ID verification in progress', color: 'text-amber-gold' };
       case 'documents_pending':
-        return {
-          bg: 'bg-ocean-blue',
-          icon: <Shield size={24} />,
-          title: 'Documents Needed',
-          desc: 'Upload required documents',
-          color: 'text-ocean-blue'
-        };
+        return { bg: 'bg-ocean-blue', icon: <Shield size={24} />, title: 'Documents Needed', desc: 'Upload required documents', color: 'text-ocean-blue' };
       case 'rejected':
-        return {
-          bg: 'bg-red-500',
-          icon: <Shield size={24} />,
-          title: 'Verification Failed',
-          desc: 'Please contact support',
-          color: 'text-red-500'
-        };
+        return { bg: 'bg-red-500', icon: <Shield size={24} />, title: 'Verification Failed', desc: 'Please contact support', color: 'text-red-500' };
       default:
-        return {
-          bg: 'bg-ink/30',
-          icon: <Shield size={24} />,
-          title: 'Unknown Status',
-          desc: 'Contact support',
-          color: 'text-ink/70'
-        };
+        return { bg: 'bg-ink/30', icon: <Shield size={24} />, title: 'Unknown Status', desc: 'Contact support', color: 'text-ink/70' };
     }
   };
 
   const config = getStatusConfig(kycStatus);
 
   return (
-    <div className="rounded-xl bg-white p-6 shadow-sm border border-ocean-blue/10">
+    <div className="rounded-xl bg-white p-5 shadow-sm border border-ocean-blue/10">
       <div className="flex items-start gap-4">
-        <div className={`rounded-lg ${config.bg} p-3 text-white`}>
+        <div className={`shrink-0 rounded-lg ${config.bg} p-3 text-white`}>
           {config.icon}
         </div>
-        <div className="flex-1">
-          <h3 className="font-bold text-deep-navy">{config.title}</h3>
-          <p className="text-sm text-ink/70">{config.desc}</p>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-deep-navy truncate">{config.title}</h3>
+          <p className="text-sm text-ink/70 line-clamp-2">{config.desc}</p>
           {kycStatus !== 'fully_verified' && (
             <Link 
               href="/landlord/verification" 
