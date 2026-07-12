@@ -252,13 +252,13 @@ export default function LandlordListingsPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => alert("Edit functionality coming soon!")}
-                      className="p-2 rounded-lg text-ink/60 hover:bg-mist-white hover:text-deep-navy transition-colors"
-                      title="Edit Listing"
-                    >
-                      <Edit2 size={16} />
-                    </button>
+                    <Link
+  href={`/landlord/listings/${listing.id}/edit`}
+  className="p-2 rounded-lg text-ink/60 hover:bg-mist-white hover:text-deep-navy transition-colors"
+  title="Edit Listing"
+>
+  <Edit2 size={16} />
+</Link>
                     <button
                       onClick={() => handleDelete(listing.id)}
                       className="p-2 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
