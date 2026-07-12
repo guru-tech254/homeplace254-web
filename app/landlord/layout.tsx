@@ -2,14 +2,26 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Home, PlusCircle, Plus, Users, LogOut, Menu, X } from "lucide-react";
+import { 
+  LayoutDashboard, 
+  Home, 
+  PlusCircle, 
+  Plus, 
+  Users, 
+  LogOut, 
+  Menu, 
+  X,
+  MessageSquare,
+  List // ✅ Added List icon for My Listings
+} from "lucide-react";
 import { supabaseAuth } from "@/lib/supabase/auth-client";
 import { useState } from "react";
-import { MessageSquare } from "lucide-react";
 
+// ✅ UPDATED NAVIGATION ARRAY
 const navItems = [
   { name: "Dashboard", href: "/landlord/dashboard", icon: LayoutDashboard },
   { name: "My Properties", href: "/landlord/properties", icon: Home },
+  { name: "My Listings", href: "/landlord/listings", icon: List }, // ✅ NEW ITEM ADDED HERE
   { name: "Add New Property", href: "/landlord/properties/new", icon: PlusCircle },
   { name: "Add Listing", href: "/landlord/listings/new", icon: Plus },
   { name: "Tenants", href: "/landlord/tenants", icon: Users },
