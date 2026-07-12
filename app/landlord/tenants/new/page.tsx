@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseAuth } from "@/lib/supabase/auth-client";
-import { ArrowLeft, Loader2, UserPlus } from "lucide-react";
+import { ArrowLeft, Save, UserPlus, Home, Calendar, DollarSign } from "lucide-react";
 import Link from "next/link";
 
 interface Property {
@@ -15,27 +15,59 @@ interface Listing {
   id: string;
   title: string;
   price: number;
-  bedrooms: number;
-  bathrooms: number;
-  status: string; // 'available' or 'rented'
 }
 
-export default function AddTenantPage() {
+function NewTenantFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const preselectedPropertyId = searchParams.get("property_id");
-
-  const [loading, setLoading] = useState(false);
+  
   const [properties, setProperties] = useState<Property[]>([]);
   const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
   const [formData, setFormData] = useState({
-    property_id: preselectedPropertyId || "",
+    property_id: searchParams.get("propertyId") || "",
     listing_id: "",
-    tenant_email: "",
-    lease_start: "",
-    lease_end: "",
+    full_name: "",
+    email: "",
+    phone: "",
+    id_number: "",
+    move_in_date: "",
     monthly_rent: "",
+    deposit: "",
   });
+
+  // ✅ FIX: Functions declared BEFORE useEffect
+  const fetchProperties = async () => {
+    const { data: { user } } = await supabaseAuth.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabaseAuth
+      .from("properties")
+      .select("id, name")
+      .eq("landlord_id", user.id);
+    
+    if (data) setProperties(data);
+  };
+
+  const fetchListings = async (propertyId: string) => {
+    const { data } = await supabaseAuth
+      .from("listings")
+      .select("id, title, price")
+      .eq("property_id", propertyId)
+      .eq("status", "available");
+    
+    if (data) {
+      setListings(data);
+      // Auto-fill rent if a listing is selected or if only one is available
+      if (data.length === 1) {
+        setFormData(prev => ({ ...prev, listing_id: data[0].id, monthly_rent: data[0].price.toString() }));
+      }
+    } else {
+      setListings([]);
+    }
+  };
 
   useEffect(() => {
     fetchProperties();
@@ -44,237 +76,230 @@ export default function AddTenantPage() {
   useEffect(() => {
     if (formData.property_id) {
       fetchListings(formData.property_id);
-    } else {
-      setListings([]);
     }
   }, [formData.property_id]);
 
-  const fetchProperties = async () => {
-    const { data: { user } } = await supabaseAuth.auth.getUser();
-    if (!user) return;
-
-    const { data } = await supabaseAuth
-      .from("properties")
-      .select("id, name")
-      .eq("landlord_id", user.id)
-      .order("name");
-
-    if (data) setProperties(data);
-  };
-
-  const fetchListings = async (propertyId: string) => {
-    const { data: { user } } = await supabaseAuth.auth.getUser();
-    if (!user) return;
-
-    // Only show available listings for tenant assignment
-    const { data } = await supabaseAuth
-      .from("listings")
-      .select("id, title, price, bedrooms, bathrooms, status")
-      .eq("property_id", propertyId)
-      .eq("landlord_id", user.id)
-      .eq("status", "available")
-      .order("title");
-
-    if (data) setListings(data);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // If property changes, reset listing
+    if (name === "property_id") {
+      setFormData(prev => ({ ...prev, [name]: value, listing_id: "", monthly_rent: "" }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
+
+    const { data: { user } } = await supabaseAuth.auth.getUser();
+    if (!user) {
+      alert("You must be logged in as a landlord.");
+      setSubmitting(false);
+      return;
+    }
 
     try {
-      const { data: { user: landlordUser } } = await supabaseAuth.auth.getUser();
-      if (!landlordUser) throw new Error("Not authenticated");
-
-      // Find or create tenant user by email
-      // Note: In production, you'd want a proper user lookup/creation flow
-      // For now, we'll assume the tenant already exists in auth.users
-      const { data: tenantUsers } = await supabaseAuth
-        .from("users")
-        .select("id")
-        .eq("email", formData.tenant_email)
-        .single();
-
-      if (!tenantUsers) {
-        throw new Error(`No user found with email: ${formData.tenant_email}. Tenant must be registered first.`);
-      }
-
-      const selectedListing = listings.find(l => l.id === formData.listing_id);
-      if (!selectedListing) throw new Error("Invalid listing selected");
-
-      // Insert tenant record
       const { error } = await supabaseAuth.from("tenants").insert({
-        user_id: tenantUsers.id,
-        listing_id: formData.listing_id,
-        landlord_id: landlordUser.id,
-        lease_start: formData.lease_start,
-        lease_end: formData.lease_end,
-        monthly_rent: parseFloat(formData.monthly_rent) || selectedListing.price,
-        status: "active",
+        landlord_id: user.id,
+        property_id: formData.property_id,
+        listing_id: formData.listing_id || null,
+        full_name: formData.full_name,
+        email: formData.email,
+        phone: formData.phone,
+        id_number: formData.id_number,
+        move_in_date: formData.move_in_date,
+        monthly_rent: Number(formData.monthly_rent),
+        deposit: Number(formData.deposit),
+        status: "active"
       });
 
       if (error) throw error;
 
-      // Update listing status to rented
-      await supabaseAuth
-        .from("listings")
-        .update({ status: "rented" })
-        .eq("id", formData.listing_id);
-
-      alert("Tenant registered successfully!");
-      
-      // Redirect back to the property detail page if preselected, otherwise to tenants list
-      if (preselectedPropertyId) {
-        router.push(`/landlord/properties/${preselectedPropertyId}`);
-      } else {
-        router.push("/landlord/tenants");
-      }
-    } catch (error: any) {
-      console.error(error);
-      alert(`Error: ${error.message}`);
+      alert("Tenant added successfully!");
+      router.push("/landlord/tenants");
+    } catch (err: any) {
+      alert("Error adding tenant: " + err.message);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-3xl py-6">
-      <Link 
-        href={preselectedPropertyId ? `/landlord/properties/${preselectedPropertyId}` : "/landlord/tenants"} 
-        className="inline-flex items-center gap-2 text-sm text-ink/70 hover:text-deep-navy mb-6 transition-colors"
-      >
-        <ArrowLeft size={16} /> Back
-      </Link>
-      
-      <h1 className="mb-2 text-2xl font-bold text-deep-navy">Register New Tenant</h1>
-      <p className="mb-8 text-ink/70">Assign an existing user to a rental unit.</p>
+    <div className="max-w-3xl mx-auto p-6">
+      <div className="flex items-center gap-4 mb-8">
+        <Link href="/landlord/tenants" className="p-2 hover:bg-mist-white rounded-full transition-colors">
+          <ArrowLeft size={24} className="text-deep-navy" />
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold text-deep-navy">Add New Tenant</h1>
+          <p className="text-sm text-ink/70">Register a new tenant to a property unit.</p>
+        </div>
+      </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6 rounded-xl bg-white p-6 shadow-sm border border-ocean-blue/10">
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-ocean-blue/10 p-8 space-y-6">
         
-        {/* Property Selection */}
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-deep-navy">Select Property *</label>
-          <select 
-            required 
-            value={formData.property_id} 
-            onChange={(e) => setFormData({ ...formData, property_id: e.target.value, listing_id: "" })} 
-            className="w-full rounded-lg border border-ocean-blue/20 bg-mist-white px-4 py-2.5 text-sm text-ink focus:border-ocean-blue focus:outline-none focus:ring-1 focus:ring-ocean-blue"
-          >
-            <option value="">Choose a property...</option>
-            {properties.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          {properties.length === 0 && (
-            <p className="mt-2 text-xs text-red-600">No properties found. Create a property first.</p>
-          )}
-        </div>
-
-        {/* Listing/Unit Selection */}
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-deep-navy">Select Unit *</label>
-          <select 
-            required 
-            value={formData.listing_id} 
-            onChange={(e) => {
-              const selected = listings.find(l => l.id === e.target.value);
-              setFormData({ 
-                ...formData, 
-                listing_id: e.target.value,
-                monthly_rent: selected ? String(selected.price) : ""
-              });
-            }} 
-            disabled={!formData.property_id}
-            className="w-full rounded-lg border border-ocean-blue/20 bg-mist-white px-4 py-2.5 text-sm text-ink focus:border-ocean-blue focus:outline-none focus:ring-1 focus:ring-ocean-blue disabled:opacity-50"
-          >
-            <option value="">Choose a unit...</option>
-            {listings.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.title} - {l.bedrooms} bed, {l.bathrooms} bath - KES {Number(l.price).toLocaleString()}
-              </option>
-            ))}
-          </select>
-          {!formData.property_id && (
-            <p className="mt-2 text-xs text-ink/60">Select a property first to see available units.</p>
-          )}
-          {formData.property_id && listings.length === 0 && (
-            <p className="mt-2 text-xs text-amber-gold">No available units in this property. All units are currently rented.</p>
-          )}
-        </div>
-
-        {/* Tenant Email */}
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-deep-navy">Tenant Email *</label>
-          <input 
-            type="email" 
-            required 
-            placeholder="tenant@example.com" 
-            value={formData.tenant_email} 
-            onChange={(e) => setFormData({ ...formData, tenant_email: e.target.value })} 
-            className="w-full rounded-lg border border-ocean-blue/20 bg-mist-white px-4 py-2.5 text-sm text-ink focus:border-ocean-blue focus:outline-none focus:ring-1 focus:ring-ocean-blue"
-          />
-          <p className="mt-1 text-xs text-ink/60">The tenant must already have a registered account on HomePlace254.</p>
-        </div>
-
-        {/* Lease Dates */}
-        <div className="grid gap-4 md:grid-cols-2">
+        {/* Property & Unit Selection */}
+        <div className="grid md:grid-cols-2 gap-6">
           <div>
-            <label className="mb-1.5 block text-sm font-semibold text-deep-navy">Lease Start Date *</label>
-            <input 
-              type="date" 
-              required 
-              value={formData.lease_start} 
-              onChange={(e) => setFormData({ ...formData, lease_start: e.target.value })} 
-              className="w-full rounded-lg border border-ocean-blue/20 bg-mist-white px-4 py-2.5 text-sm text-ink focus:border-ocean-blue focus:outline-none focus:ring-1 focus:ring-ocean-blue"
-            />
+            <label className="block text-sm font-semibold text-deep-navy mb-2">Property</label>
+            <div className="relative">
+              <Home className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 h-5 w-5" />
+              <select
+                name="property_id"
+                value={formData.property_id}
+                onChange={handleChange}
+                required
+                className="w-full pl-10 pr-4 py-3 rounded-lg border border-ocean-blue/20 bg-mist-white focus:outline-none focus:border-ocean-blue"
+              >
+                <option value="">Select a Property</option>
+                {properties.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
+
           <div>
-            <label className="mb-1.5 block text-sm font-semibold text-deep-navy">Lease End Date *</label>
-            <input 
-              type="date" 
-              required 
-              min={formData.lease_start}
-              value={formData.lease_end} 
-              onChange={(e) => setFormData({ ...formData, lease_end: e.target.value })} 
-              className="w-full rounded-lg border border-ocean-blue/20 bg-mist-white px-4 py-2.5 text-sm text-ink focus:border-ocean-blue focus:outline-none focus:ring-1 focus:ring-ocean-blue"
-            />
+            <label className="block text-sm font-semibold text-deep-navy mb-2">Unit / Listing</label>
+            <select
+              name="listing_id"
+              value={formData.listing_id}
+              onChange={handleChange}
+              className="w-full px-4 py-3 rounded-lg border border-ocean-blue/20 bg-mist-white focus:outline-none focus:border-ocean-blue disabled:opacity-50"
+              disabled={!formData.property_id}
+            >
+              <option value="">Select a Unit (Optional)</option>
+              {listings.map(l => (
+                <option key={l.id} value={l.id}>{l.title} (KES {l.price.toLocaleString()})</option>
+              ))}
+            </select>
           </div>
         </div>
 
-        {/* Monthly Rent */}
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-deep-navy">Monthly Rent (KES) *</label>
-          <input 
-            type="number" 
-            required 
-            min="0"
-            placeholder={listings.find(l => l.id === formData.listing_id)?.price.toString() || "Enter rent amount"}
-            value={formData.monthly_rent} 
-            onChange={(e) => setFormData({ ...formData, monthly_rent: e.target.value })} 
-            className="w-full rounded-lg border border-ocean-blue/20 bg-mist-white px-4 py-2.5 text-sm text-ink focus:border-ocean-blue focus:outline-none focus:ring-1 focus:ring-ocean-blue"
-          />
-          <p className="mt-1 text-xs text-ink/60">Pre-filled from listing price. You can adjust if needed.</p>
+        {/* Personal Details */}
+        <div className="border-t border-ocean-blue/10 pt-6">
+          <h3 className="text-lg font-bold text-deep-navy mb-4 flex items-center gap-2">
+            <UserPlus size={20} /> Personal Information
+          </h3>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-ink/70 mb-1">Full Name</label>
+              <input
+                type="text"
+                name="full_name"
+                value={formData.full_name}
+                onChange={handleChange}
+                required
+                className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink/70 mb-1">ID / Passport Number</label>
+              <input
+                type="text"
+                name="id_number"
+                value={formData.id_number}
+                onChange={handleChange}
+                required
+                className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink/70 mb-1">Email Address</label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink/70 mb-1">Phone Number</label>
+              <input
+                type="tel"
+                name="phone"
+                value={formData.phone}
+                onChange={handleChange}
+                required
+                className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Submit Button */}
-        <button 
-          type="submit" 
-          disabled={loading || !formData.property_id || !formData.listing_id} 
-          className="w-full flex items-center justify-center gap-2 rounded-lg bg-deep-navy py-3.5 text-base font-bold text-white transition-all hover:bg-ocean-blue disabled:opacity-50"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" /> 
-              Registering Tenant...
-            </>
-          ) : (
-            <>
-              <UserPlus size={18} /> 
-              Register Tenant
-            </>
-          )}
-        </button>
+        {/* Financial & Move-in Details */}
+        <div className="border-t border-ocean-blue/10 pt-6">
+          <h3 className="text-lg font-bold text-deep-navy mb-4 flex items-center gap-2">
+            <DollarSign size={20} /> Lease Details
+          </h3>
+          <div className="grid md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-ink/70 mb-1">Monthly Rent (KES)</label>
+              <input
+                type="number"
+                name="monthly_rent"
+                value={formData.monthly_rent}
+                onChange={handleChange}
+                required
+                className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink/70 mb-1">Deposit (KES)</label>
+              <input
+                type="number"
+                name="deposit"
+                value={formData.deposit}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink/70 mb-1">Move-in Date</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 h-5 w-5" />
+                <input
+                  type="date"
+                  name="move_in_date"
+                  value={formData.move_in_date}
+                  onChange={handleChange}
+                  required
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end gap-4 pt-6 border-t border-ocean-blue/10">
+          <Link 
+            href="/landlord/tenants" 
+            className="px-6 py-2.5 rounded-lg text-ink/70 hover:bg-mist-white font-semibold transition-colors"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex items-center gap-2 px-8 py-2.5 bg-amber-gold text-white rounded-lg font-bold hover:brightness-90 transition-all disabled:opacity-50"
+          >
+            <Save size={18} />
+            {submitting ? "Saving..." : "Save Tenant"}
+          </button>
+        </div>
       </form>
     </div>
+  );
+}
+
+export default function NewTenantPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-deep-navy">Loading form...</div>}>
+      <NewTenantFormContent />
+    </Suspense>
   );
 }

@@ -31,64 +31,66 @@ export default function LandlordListingsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  useEffect(() => {
-    fetchListings();
-  }, []);
-
-    const fetchListings = async () => {
+  // ✅ FIX: Functions declared BEFORE useEffect
+  const fetchListings = async () => {
     const { data: { user } } = await supabaseAuth.auth.getUser();
     if (!user) return;
 
-    // Step 1: Fetch basic listing data without nested joins
-    const { data, error } = await supabaseAuth
-      .from("listings")
-      .select(`
-        id,
-        title,
-        category,
-        sub_category,
-        price,
-        status,
-        bedrooms,
-        bathrooms,
-        parking,
-        primary_image_url,
-        created_at,
-        property_id
-      `)
-      .eq("landlord_id", user.id)
-      .order("created_at", { ascending: false });
+    try {
+      // Step 1: Fetch basic listing data without nested joins
+      const { data, error } = await supabaseAuth
+        .from("listings")
+        .select(`
+          id,
+          title,
+          category,
+          sub_category,
+          price,
+          status,
+          bedrooms,
+          bathrooms,
+          parking,
+          primary_image_url,
+          created_at,
+          property_id
+        `)
+        .eq("landlord_id", user.id)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Error fetching listings:", error);
-      setLoading(false);
-      return;
-    }
+      if (error) {
+        console.error("Error fetching listings:", error);
+        setLoading(false);
+        return;
+      }
 
-    // Step 2: Enrich each listing with property details
-    const enrichedListings = await Promise.all(
-      (data || []).map(async (listing) => {
-        let propertyData = null;
-        
-        if (listing.property_id) {
-          const { data: prop } = await supabaseAuth
-            .from("properties")
-            .select("name, estate, county")
-            .eq("id", listing.property_id)
-            .single();
+      // Step 2: Enrich each listing with property details
+      const enrichedListings = await Promise.all(
+        (data || []).map(async (listing) => {
+          let propertyData = null;
           
-          propertyData = prop;
-        }
+          if (listing.property_id) {
+            const { data: prop } = await supabaseAuth
+              .from("properties")
+              .select("name, estate, county")
+              .eq("id", listing.property_id)
+              .single();
+            
+            propertyData = prop;
+          }
 
-        return {
-          ...listing,
-          properties: propertyData
-        };
-      })
-    );
+          return {
+            ...listing,
+            properties: propertyData
+          };
+        })
+      );
 
-    setListings(enrichedListings);
-    setLoading(false);
+      setListings(enrichedListings);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -102,6 +104,10 @@ export default function LandlordListingsPage() {
       setListings(listings.filter(l => l.id !== id));
     }
   };
+
+  useEffect(() => {
+    fetchListings();
+  }, []);
 
   const filteredListings = listings.filter((listing) => {
     const matchesSearch = 

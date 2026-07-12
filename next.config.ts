@@ -1,20 +1,26 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // ✅ FIX: Explicitly define project root to prevent Turbopack lockfile confusion
+  turbopack: {
+    root: "./",
+  },
+
+  // ✅ Required for external property images and Google Maps assets
   images: {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "images.unsplash.com",
-        pathname: "/**",
+        hostname: "**",
       },
-      // Add Supabase Storage domain here later when connecting real data
-      // {
-      //   protocol: "https",
-      //   hostname: "*.supabase.co",
-      //   pathname: "/storage/v1/object/public/**",
-      // },
     ],
+  },
+
+  // Optional: Silence telemetry warning during build
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "2mb",
+    },
   },
 };
 

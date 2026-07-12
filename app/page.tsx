@@ -35,10 +35,6 @@ export default function HomePage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 500000]);
 
-  useEffect(() => {
-    fetchListings();
-  }, []);
-
   // Helper to get or create a unique visitor ID
   const getVisitorId = () => {
     if (typeof window === "undefined") return "";
@@ -50,6 +46,7 @@ export default function HomePage() {
     return visitorId;
   };
 
+  // ✅ FIX: Functions declared BEFORE useEffect
   const fetchListings = async () => {
     try {
       const visitorId = getVisitorId();
@@ -180,6 +177,10 @@ export default function HomePage() {
       console.error("Like toggle error:", err);
     }
   };
+
+  useEffect(() => {
+    fetchListings();
+  }, []);
 
   // Client-side filtering (fast and responsive)
   const filteredListings = listings.filter((listing) => {

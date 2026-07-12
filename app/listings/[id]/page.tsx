@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabaseAuth } from "@/lib/supabase/auth-client";
-import { MapPin, Bed, Bath, Car, ArrowLeft, Home, CheckCircle2, Navigation } from "lucide-react";
+import { MapPin, Bed, Bath, Car, ArrowLeft, Home, CheckCircle2, Navigation, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import GoogleMap from "@/components/GoogleMap";
+import { useChat } from "@/lib/chat-context";
 
 interface ListingDetail {
   id: string;
@@ -19,33 +20,34 @@ interface ListingDetail {
   parking: boolean;
   primary_image_url: string;
   status: string;
+  created_at: string; // ✅ FIX: Added to resolve TS build error
+  property_id: string; // ✅ FIX: Added to resolve TS build error
   property: {
     name: string;
     address: string;
     estate: string;
     county: string;
-    amenities: string[];
+    landlord_id: string;
+    amenities: Record<string, boolean> | null;
   } | null;
 }
 
 export default function ListingDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { openChat } = useChat();
   const listingId = params.id as string;
 
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchListingDetails();
-  }, [listingId]);
-
+  // ✅ FIX: Function declared BEFORE useEffect
   const fetchListingDetails = async () => {
     try {
-      // Step 1: Fetch the listing
+      // Step 1: Fetch the listing with created_at included
       const { data: listingData, error } = await supabaseAuth
         .from("listings")
-        .select("*")
+        .select("id, title, description, category, sub_category, price, bedrooms, bathrooms, parking, primary_image_url, status, created_at, property_id")
         .eq("id", listingId)
         .single();
 
@@ -60,7 +62,7 @@ export default function ListingDetailPage() {
       if (listingData.property_id) {
         const { data: prop } = await supabaseAuth
           .from("properties")
-          .select("name, address, estate, county, amenities")
+          .select("name, address, estate, county, landlord_id, amenities")
           .eq("id", listingData.property_id)
           .single();
         
@@ -77,6 +79,10 @@ export default function ListingDetailPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchListingDetails();
+  }, [listingId]);
 
   const handleGetDirections = () => {
     if (!listing?.property) return;
@@ -240,11 +246,16 @@ export default function ListingDetailPage() {
                 Contact the landlord to schedule a viewing or start the application process.
               </p>
               
-              <button className="w-full bg-amber-gold text-white font-bold py-3 rounded-lg hover:brightness-90 transition-all mb-3">
-                Schedule a Viewing
+              <button 
+                onClick={() => openChat(listing.id, listing.property?.landlord_id || "")}
+                className="w-full flex items-center justify-center gap-2 bg-amber-gold text-white font-bold py-3 rounded-lg hover:brightness-90 transition-all mb-3"
+              >
+                <MessageCircle size={18} />
+                Chat with Landlord
               </button>
+              
               <button className="w-full bg-deep-navy text-white font-bold py-3 rounded-lg hover:bg-ocean-blue transition-all">
-                Contact Landlord
+                Schedule a Viewing
               </button>
 
               <div className="mt-6 pt-6 border-t border-ocean-blue/10 text-center">

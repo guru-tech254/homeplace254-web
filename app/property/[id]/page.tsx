@@ -1,156 +1,282 @@
-import { notFound } from "next/navigation";
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { supabaseAuth } from "@/lib/supabase/auth-client";
+import { MapPin, Bed, Bath, Car, ArrowLeft, Home, CheckCircle2, Navigation, MessageCircle } from "lucide-react";
 import Link from "next/link";
-import { MapPin, Bed, Bath, Car, CheckCircle2, MessageCircle, Phone, ArrowLeft } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-interface Property {
+import GoogleMap from "@/components/GoogleMap";
+import { useChat } from "@/lib/chat-context";
+
+interface ListingDetail {
   id: string;
-  name: string;
-  address: string;
-  estate: string;
-  county: string;
-  landlord_id: string;
-  amenities: Record<string, boolean> | null;
-  created_at: string;
-  updated_at: string;
+  title: string;
+  description: string;
+  category: string;
+  sub_category: string;
+  price: number;
+  bedrooms: number;
+  bathrooms: number;
+  parking: boolean;
+  primary_image_url: string;
+  status: string;
+  created_at: string; // ✅ FIX: Added to resolve TS build error
+  property_id: string;
+  property: {
+    name: string;
+    address: string;
+    estate: string;
+    county: string;
+    landlord_id: string;
+    amenities: Record<string, boolean> | null;
+  } | null;
 }
-export default async function PropertyDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const supabase = await createClient();
 
-  const { data: property, error } = await supabase
-    .from("properties")
-    .select("*")
-    .eq("id", id)
-    .single();
+export default function ListingDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const { openChat } = useChat();
+  const listingId = params.id as string;
 
-  if (error || !property) return notFound();
+  const [listing, setListing] = useState<ListingDetail | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const formattedPrice = new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: property.currency || "KES",
-    maximumFractionDigits: 0,
-  }).format(property.price);
+  useEffect(() => {
+    fetchListingDetails();
+  }, [listingId]);
 
-  const amenities = (property.amenities as any) || {};
+  const fetchListingDetails = async () => {
+    try {
+      // Step 1: Fetch the listing with created_at included
+      const { data: listingData, error } = await supabaseAuth
+        .from("listings")
+        .select("id, title, description, category, sub_category, price, bedrooms, bathrooms, parking, primary_image_url, status, created_at, property_id")
+        .eq("id", listingId)
+        .single();
 
-  return (
-    <div className="min-h-screen bg-mist-white">
-      {/* Back Button */}
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-8">
-        <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-deep-navy hover:text-ocean-blue transition-colors">
-          <ArrowLeft size={16} />
-          Back to Listings
+      if (error || !listingData) {
+        console.error("Listing not found or error:", error);
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Fetch the parent property details separately
+      let propertyData = null;
+      if (listingData.property_id) {
+        const { data: prop } = await supabaseAuth
+          .from("properties")
+          .select("name, address, estate, county, landlord_id, amenities")
+          .eq("id", listingData.property_id)
+          .single();
+        
+        propertyData = prop;
+      }
+
+      setListing({
+        ...listingData,
+        property: propertyData,
+      });
+    } catch (err) {
+      console.error("Error fetching details:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGetDirections = () => {
+    if (!listing?.property) return;
+    const address = encodeURIComponent(`${listing.property.address}, ${listing.property.estate}, ${listing.property.county}, Kenya`);
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${address}`, "_blank");
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-mist-white">
+        <div className="text-deep-navy">Loading listing details...</div>
+      </div>
+    );
+  }
+
+  if (!listing) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-mist-white p-4">
+        <Home className="h-16 w-16 text-ocean-blue/30 mb-4" />
+        <h1 className="text-2xl font-bold text-deep-navy mb-2">Listing Not Found</h1>
+        <p className="text-ink/70 mb-6">This property might have been rented or removed.</p>
+        <Link href="/" className="text-ocean-blue font-semibold hover:underline">
+          ← Back to Home
         </Link>
       </div>
+    );
+  }
 
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 pb-20 sm:px-8 lg:grid-cols-3">
-        
-        {/* LEFT COLUMN: Images & Details */}
-        <div className="lg:col-span-2 space-y-8">
-          
-          {/* Main Image */}
-          <div className="relative h-[400px] w-full overflow-hidden rounded-2xl bg-gray-100 shadow-sm border border-ocean-blue/10">
-            <Image
-              src={property.primary_image_url || "/placeholder-property.jpg"}
-              alt={property.title}
-              fill
-              className="object-cover"
-              priority
-            />
-            {property.is_verified && (
-              <div className="absolute top-4 left-4 flex items-center gap-1.5 rounded-lg bg-signal-green px-3 py-1.5 text-sm font-bold text-white shadow-md">
-                <CheckCircle2 size={16} />
-                VERIFIED LISTING
-              </div>
-            )}
-          </div>
-
-          {/* Title & Price */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-ink leading-tight">{property.title}</h1>
-              <div className="mt-2 flex items-center gap-1.5 text-ocean-blue">
-                <MapPin size={18} />
-                <span>{property.address}, {property.estate}, {property.county}</span>
-              </div>
-            </div>
-            <div className="text-3xl font-bold text-amber-gold">{formattedPrice}</div>
-          </div>
-
-          {/* Amenities Grid */}
-          <div className="rounded-xl bg-white p-6 shadow-sm border border-ocean-blue/10">
-            <h2 className="mb-4 text-lg font-bold text-deep-navy">Amenities</h2>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-              {amenities.bedrooms && (
-                <div className="flex items-center gap-3 rounded-lg bg-mist-white p-3">
-                  <Bed size={20} className="text-deep-navy" />
-                  <span className="text-sm font-medium text-ink">{amenities.bedrooms} Bedrooms</span>
-                </div>
-              )}
-              {amenities.bathrooms && (
-                <div className="flex items-center gap-3 rounded-lg bg-mist-white p-3">
-                  <Bath size={20} className="text-deep-navy" />
-                  <span className="text-sm font-medium text-ink">{amenities.bathrooms} Bathrooms</span>
-                </div>
-              )}
-              {amenities.parking && (
-                <div className="flex items-center gap-3 rounded-lg bg-mist-white p-3">
-                  <Car size={20} className="text-deep-navy" />
-                  <span className="text-sm font-medium text-ink">Parking Available</span>
-                </div>
-              )}
-              {amenities.water && (
-                <div className="flex items-center gap-3 rounded-lg bg-mist-white p-3">
-                  <CheckCircle2 size={20} className="text-deep-navy" />
-                  <span className="text-sm font-medium text-ink">Water Supply</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Description */}
-          <div className="rounded-xl bg-white p-6 shadow-sm border border-ocean-blue/10">
-            <h2 className="mb-4 text-lg font-bold text-deep-navy">Description</h2>
-            <p className="whitespace-pre-line text-ink/80 leading-relaxed">
-              {property.description || "No description provided."}
-            </p>
+  return (
+    <div className="min-h-screen bg-mist-white pb-20">
+      {/* Header Navigation */}
+      <div className="bg-white border-b border-ocean-blue/10 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center">
+          <button 
+            onClick={() => router.back()} 
+            className="flex items-center gap-2 text-ink/70 hover:text-deep-navy transition-colors"
+          >
+            <ArrowLeft size={20} />
+            <span className="font-medium">Back</span>
+          </button>
+          <div className="ml-auto">
+            <Link href="/" className="text-xl font-bold text-deep-navy">
+              HomePlace<span className="text-amber-gold">254</span>
+            </Link>
           </div>
         </div>
-
-        {/* RIGHT COLUMN: Sticky CTA Card */}
-        <div className="lg:col-span-1">
-          <div className="sticky top-8 rounded-2xl bg-white p-6 shadow-lg border border-ocean-blue/10">
-            <h3 className="mb-4 text-lg font-bold text-deep-navy">Interested in this property?</h3>
-            <p className="mb-6 text-sm text-ink/70">Contact the landlord directly to schedule a viewing or ask questions.</p>
-            
-            <div className="space-y-3">
-              <Link 
-                href={`/chat?propertyId=${property.id}`}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-deep-navy py-3.5 text-base font-bold text-white transition-all hover:bg-ocean-blue hover:shadow-md"
-              >
-                <MessageCircle size={20} />
-                Chat with Landlord
-              </Link>
-              
-              <a
-                href={`https://wa.me/?text=Hi, I'm interested in ${encodeURIComponent(property.title)} (${formattedPrice}) listed on HomePlace254`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-signal-green py-3.5 text-base font-bold text-white transition-all hover:brightness-90 hover:shadow-md"
-              >
-                <Phone size={20} />
-                WhatsApp
-              </a>
-            </div>
-
-            <div className="mt-6 border-t border-ocean-blue/10 pt-4 text-center">
-              <p className="text-xs text-ink/50">Your link to your next home</p>
-            </div>
-          </div>
-        </div>
-
       </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Main Content Grid */}
+        <div className="grid gap-8 lg:grid-cols-3">
+          
+          {/* Left Column: Images & Details */}
+          <div className="lg:col-span-2 space-y-8">
+            {/* Main Image */}
+            <div className="rounded-2xl overflow-hidden shadow-sm bg-white h-[400px] md:h-[500px]">
+              {listing.primary_image_url ? (
+                <img 
+                  src={listing.primary_image_url} 
+                  alt={listing.title} 
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center bg-gradient-to-br from-ocean-blue/10 to-teal-500/10">
+                  <Home className="h-24 w-24 text-ocean-blue/30" />
+                </div>
+              )}
+            </div>
+
+            {/* Listing Info */}
+            <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-ocean-blue/10">
+              <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+                <div>
+                  <h1 className="text-2xl md:text-3xl font-bold text-deep-navy mb-2">{listing.title}</h1>
+                  <div className="flex items-center gap-2 text-ink/70">
+                    <MapPin size={18} />
+                    <span>{listing.property?.estate}, {listing.property?.county}</span>
+                  </div>
+                  {listing.property?.name && (
+                    <p className="text-sm text-amber-gold font-semibold mt-1">
+                      Part of {listing.property.name}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-ink/60">
+                    {listing.category === "rental" ? "Monthly Rent" : "Price"}
+                  </p>
+                  <p className="text-3xl font-bold text-ocean-blue">
+                    KES {Number(listing.price).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Key Features */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-6 border-y border-ocean-blue/10">
+                <FeatureItem icon={<Bed size={20} />} label="Bedrooms" value={listing.bedrooms} />
+                <FeatureItem icon={<Bath size={20} />} label="Bathrooms" value={listing.bathrooms} />
+                <FeatureItem icon={<Car size={20} />} label="Parking" value={listing.parking ? "Yes" : "No"} />
+                <FeatureItem icon={<Home size={20} />} label="Type" value={listing.sub_category.replace('_', ' ')} />
+              </div>
+
+              {/* Description */}
+              <div className="mt-6">
+                <h2 className="text-xl font-bold text-deep-navy mb-3">Description</h2>
+                <p className="text-ink/70 leading-relaxed whitespace-pre-line">
+                  {listing.description || "No description provided for this listing."}
+                </p>
+              </div>
+
+              {/* Property Amenities */}
+              {listing.property?.amenities && Object.keys(listing.property.amenities).length > 0 && (
+                <div className="mt-8">
+                  <h2 className="text-xl font-bold text-deep-navy mb-3">Property Amenities</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {Object.entries(listing.property.amenities).map(([key, value]) => (
+                      value && (
+                        <div key={key} className="flex items-center gap-2 text-ink/70">
+                          <CheckCircle2 size={16} className="text-signal-green" />
+                          <span className="capitalize">{key.replace('_', ' ')}</span>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Location Map */}
+              {listing.property && (
+                <div className="mt-8">
+                  <h2 className="text-xl font-bold text-deep-navy mb-3">Location</h2>
+                  <GoogleMap 
+                    address={listing.property.address}
+                    estate={listing.property.estate}
+                    county={listing.property.county}
+                    height="350px"
+                  />
+                  <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 text-sm text-ink/70">
+                      <MapPin size={16} className="text-ocean-blue" />
+                      <span>{listing.property.address}, {listing.property.estate}, {listing.property.county}</span>
+                    </div>
+                    <button 
+                      onClick={handleGetDirections}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-ocean-blue text-white text-sm font-semibold rounded-lg hover:bg-deep-navy transition-colors"
+                    >
+                      <Navigation size={16} />
+                      Get Directions
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: Contact/Action Card */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-24 bg-white rounded-2xl p-6 shadow-lg border border-ocean-blue/10">
+              <h3 className="text-lg font-bold text-deep-navy mb-4">Interested in this property?</h3>
+              <p className="text-sm text-ink/70 mb-6">
+                Contact the landlord to schedule a viewing or start the application process.
+              </p>
+              
+              <button 
+                onClick={() => openChat(listing.id, listing.property?.landlord_id || "")}
+                className="w-full flex items-center justify-center gap-2 bg-amber-gold text-white font-bold py-3 rounded-lg hover:brightness-90 transition-all mb-3"
+              >
+                <MessageCircle size={18} />
+                Chat with Landlord
+              </button>
+              
+              <button className="w-full bg-deep-navy text-white font-bold py-3 rounded-lg hover:bg-ocean-blue transition-all">
+                Schedule a Viewing
+              </button>
+
+              <div className="mt-6 pt-6 border-t border-ocean-blue/10 text-center">
+                <p className="text-xs text-ink/60">
+                  Listed on {new Date(listing.created_at).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeatureItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
+  return (
+    <div className="flex flex-col items-center justify-center p-4 bg-mist-white rounded-xl">
+      <div className="text-ocean-blue mb-2">{icon}</div>
+      <p className="text-xs text-ink/60 uppercase tracking-wide">{label}</p>
+      <p className="font-bold text-deep-navy text-lg capitalize">{value}</p>
     </div>
   );
 }

@@ -27,55 +27,60 @@ export default function LandlordDashboardPage() {
   const [userData, setUserData] = useState<{ kyc_status: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
+  // ✅ FIX: Function declared BEFORE useEffect to satisfy React Hooks rules
   const fetchDashboardData = async () => {
     const { data: { user } } = await supabaseAuth.auth.getUser();
     if (!user) return;
 
-    // Fetch current user's verification status
-    const { data: userData } = await supabaseAuth
-      .from("users")
-      .select("kyc_status")
-      .eq("id", user.id)
-      .single();
+    try {
+      // Fetch current user's verification status
+      const { data: userData } = await supabaseAuth
+        .from("users")
+        .select("kyc_status")
+        .eq("id", user.id)
+        .single();
 
-    // Fetch Properties
-    const { data: propsData } = await supabaseAuth
-      .from("properties")
-      .select("id, name, estate, county, total_units")
-      .eq("landlord_id", user.id)
-      .order("created_at", { ascending: false });
+      // Fetch Properties
+      const { data: propsData } = await supabaseAuth
+        .from("properties")
+        .select("id, name, estate, county, total_units")
+        .eq("landlord_id", user.id)
+        .order("created_at", { ascending: false });
 
-    // Fetch Tenants for calculations
-    const { data: tenantsData } = await supabaseAuth
-      .from("tenants")
-      .select("id, status, monthly_rent")
-      .eq("landlord_id", user.id);
+      // Fetch Tenants for calculations
+      const { data: tenantsData } = await supabaseAuth
+        .from("tenants")
+        .select("id, status, monthly_rent")
+        .eq("landlord_id", user.id);
 
-    if (propsData) setProperties(propsData);
-    setUserData(userData);
+      if (propsData) setProperties(propsData);
+      setUserData(userData);
 
-    // Calculate Metrics
-    const totalUnits = propsData?.reduce((sum, p) => sum + (p.total_units || 0), 0) || 0;
-    const activeTenants = tenantsData?.filter(t => t.status === "active").length || 0;
-    const overdueTenants = tenantsData?.filter(t => t.status === "overdue").length || 0;
-    const monthlyIncome = tenantsData
-      ?.filter(t => t.status === "active")
-      .reduce((sum, t) => sum + Number(t.monthly_rent), 0) || 0;
+      // Calculate Metrics
+      const totalUnits = propsData?.reduce((sum, p) => sum + (p.total_units || 0), 0) || 0;
+      const activeTenants = tenantsData?.filter(t => t.status === "active").length || 0;
+      const overdueTenants = tenantsData?.filter(t => t.status === "overdue").length || 0;
+      const monthlyIncome = tenantsData
+        ?.filter(t => t.status === "active")
+        .reduce((sum, t) => sum + Number(t.monthly_rent), 0) || 0;
 
-    setStats({
-      totalProperties: propsData?.length || 0,
-      totalTenants: activeTenants,
-      occupancyRate: totalUnits > 0 ? Math.round((activeTenants / totalUnits) * 100) : 0,
-      totalOverdue: overdueTenants,
-      monthlyIncome,
-    });
-    
-    setLoading(false);
+      setStats({
+        totalProperties: propsData?.length || 0,
+        totalTenants: activeTenants,
+        occupancyRate: totalUnits > 0 ? Math.round((activeTenants / totalUnits) * 100) : 0,
+        totalOverdue: overdueTenants,
+        monthlyIncome,
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-[400px] text-deep-navy">Loading dashboard...</div>;

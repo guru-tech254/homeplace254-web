@@ -46,6 +46,7 @@ export default function RegisterPage() {
 
     try {
       // ✅ CRITICAL FIX: Await the promise BEFORE destructuring error/data
+      // This is the EXACT fix for line 41 in your error log
       const { data, error: signUpError } = await supabaseAuth.auth.signUp({
         email: formData.email,
         password: formData.password,

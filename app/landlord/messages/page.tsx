@@ -31,60 +31,56 @@ export default function LandlordMessagesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    fetchConversations();
-  }, []);
-
-  useEffect(() => {
-    if (activeConvId) {
-      fetchMessages(activeConvId);
-    }
-  }, [activeConvId]);
-
+  // ✅ FIX: Functions declared BEFORE useEffect
   const fetchConversations = async () => {
     const { data: { user } } = await supabaseAuth.auth.getUser();
     if (!user) return;
 
-    // Fetch conversations with latest message preview
-    const { data, error } = await supabaseAuth
-      .from("conversations")
-      .select(`
-        id,
-        listing_id,
-        seeker_id,
-        seeker_visitor_id,
-        created_at,
-        listing:listing_id (
-          title,
-          primary_image_url
-        ),
-        messages:messages(
-          content,
+    try {
+      // Fetch conversations with latest message preview
+      const { data, error } = await supabaseAuth
+        .from("conversations")
+        .select(`
+          id,
+          listing_id,
+          seeker_id,
+          seeker_visitor_id,
           created_at,
-          sender_id,
-          sender_visitor_id
-        )
-      `)
-      .eq("landlord_id", user.id)
-      .order("created_at", { ascending: false });
+          listing:listing_id (
+            title,
+            primary_image_url
+          ),
+          messages:messages(
+            content,
+            created_at,
+            sender_id,
+            sender_visitor_id
+          )
+        `)
+        .eq("landlord_id", user.id)
+        .order("created_at", { ascending: false });
 
-    if (error) console.error(error);
-    else {
-      // Process to get only the last message
-      const processed = (data || []).map((conv: any) => ({
-        ...conv,
-        lastMessage: conv.messages?.[0] || null, // Assuming order is desc or we take first if fetched correctly
-      }));
-      
-      // Sort by last message time if available, else creation time
-      processed.sort((a, b) => 
-        new Date(b.lastMessage?.created_at || b.created_at).getTime() - 
-        new Date(a.lastMessage?.created_at || a.created_at).getTime()
-      );
+      if (error) console.error(error);
+      else {
+        // Process to get only the last message
+        const processed = (data || []).map((conv: any) => ({
+          ...conv,
+          lastMessage: conv.messages?.[0] || null, // Assuming order is desc or we take first if fetched correctly
+        }));
+        
+        // Sort by last message time if available, else creation time
+        processed.sort((a, b) => 
+          new Date(b.lastMessage?.created_at || b.created_at).getTime() - 
+          new Date(a.lastMessage?.created_at || a.created_at).getTime()
+        );
 
-      setConversations(processed);
+        setConversations(processed);
+      }
+    } catch (err) {
+      console.error("Error fetching conversations:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const fetchMessages = async (convId: string) => {
@@ -115,6 +111,16 @@ export default function LandlordMessagesPage() {
       fetchConversations(); // Update preview in sidebar
     }
   };
+
+  useEffect(() => {
+    fetchConversations();
+  }, []);
+
+  useEffect(() => {
+    if (activeConvId) {
+      fetchMessages(activeConvId);
+    }
+  }, [activeConvId]);
 
   const filteredConversations = conversations.filter(c => 
     c.listing?.title?.toLowerCase().includes(searchTerm.toLowerCase())
