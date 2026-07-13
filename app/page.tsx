@@ -147,21 +147,28 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-mist-white flex flex-col">
       {/* ✅ MOBILE-OPTIMIZED HEADER */}
-      <header className="bg-deep-navy shadow-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-[5.5rem] flex items-center justify-between">
+            {/* ✅ FIXED MOBILE HEADER */}
+      <header className="bg-deep-navy shadow-md sticky top-0 z-[60]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          
+          {/* Logo - Always Visible */}
           <Link href="/" className="flex items-center gap-3 bg-white rounded-lg p-1.5 shadow-sm shrink-0">
-            <img src="/logo.png" alt="HomePlace254 Logo" className="h-12 md:h-[4rem] w-auto object-contain" />
+            <img src="/logo.png" alt="HomePlace254 Logo" className="h-12 w-auto object-contain" />
           </Link>
 
-          {/* Desktop Nav */}
+          {/* Desktop Nav - Hidden on Mobile */}
           <nav className="hidden md:flex items-center gap-8">
             <Link href="/" className="text-white font-semibold hover:text-amber-gold transition-colors">Home</Link>
             <Link href="#listings" className="text-white/80 hover:text-amber-gold transition-colors">Browse Listings</Link>
             <Link href="/auth/login" className="bg-amber-gold text-white px-5 py-2.5 rounded-lg font-semibold hover:brightness-90 transition-all">Portal</Link>
           </nav>
 
-          {/* Mobile Menu Toggle */}
-          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden text-white p-2">
+          {/* ✅ Mobile Menu Button - Visible ONLY on Mobile */}
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+            className="md:hidden text-white p-2 rounded-lg hover:bg-white/10 active:bg-white/20 transition-colors"
+            aria-label="Toggle menu"
+          >
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
@@ -169,24 +176,25 @@ export default function HomePage() {
         {/* Mobile Dropdown Menu */}
         {isMobileMenuOpen && (
           <div className="md:hidden bg-deep-navy border-t border-white/10 px-4 py-4 space-y-4 animate-in slide-in-from-top-2">
-            <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className="block text-white font-semibold">Home</Link>
-            <Link href="#listings" onClick={() => setIsMobileMenuOpen(false)} className="block text-white/80">Browse Listings</Link>
-            <Link href="/auth/login" onClick={() => setIsMobileMenuOpen(false)} className="block bg-amber-gold text-white px-5 py-3 rounded-lg font-semibold text-center">Portal</Link>
+            <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className="block text-white font-semibold py-2">Home</Link>
+            <Link href="#listings" onClick={() => setIsMobileMenuOpen(false)} className="block text-white/80 py-2">Browse Listings</Link>
+            <Link href="/auth/login" onClick={() => setIsMobileMenuOpen(false)} className="block bg-amber-gold text-white px-5 py-3 rounded-lg font-semibold text-center mt-2">Portal</Link>
           </div>
         )}
       </header>
 
       {/* ✅ CRYSTAL CLEAR HERO SECTION */}
             {/* ✅ CRYSTAL CLEAR HERO SECTION - NO WHITE FADE */}
+            {/* ✅ CRYSTAL CLEAR HERO SECTION - NO WHITE FADE */}
       <section className="relative min-h-[85vh] md:min-h-[75vh] flex flex-col justify-center items-center overflow-hidden">
         
         {/* Background Image - Full Clarity */}
         <div className="absolute inset-0 z-0">
+          {/* ✅ FIX: Removed 'priority' prop from native img tag */}
           <img
             src="/hero-bg.jpg"
             alt="Modern Living Room"
             className="w-full h-full object-cover object-center"
-            priority
           />
           
           {/* Ultra-Subtle Edge Gradient: Only darkens top/bottom 15% for text safety */}
