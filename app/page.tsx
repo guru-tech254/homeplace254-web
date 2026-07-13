@@ -115,7 +115,7 @@ export default function HomePage() {
       if (existingLike) {
         await supabaseAuth.from("likes").delete().eq("id", existingLike.id);
       } else {
-        await supabaseAuth.from("likes").insert({ listing_id: listingId, visitor_id });
+        await supabaseAuth.from("likes").insert({ listing_id: listingId, visitor_id: visitorId });
       }
       fetchListings();
     } catch (err) {
@@ -186,22 +186,26 @@ export default function HomePage() {
       {/* ✅ CRYSTAL CLEAR HERO SECTION */}
             {/* ✅ CRYSTAL CLEAR HERO SECTION - NO WHITE FADE */}
             {/* ✅ CRYSTAL CLEAR HERO SECTION - NO WHITE FADE */}
-      <section className="relative min-h-[85vh] md:min-h-[75vh] flex flex-col justify-center items-center overflow-hidden">
+            {/* ✅ CRYSTAL CLEAR HERO + VISIBLE WHITE TEXT */}
+            {/* ✅ HERO: Search Bar Moved Down to Furniture Zone */}
+      <section className="relative min-h-[85vh] md:min-h-[75vh] flex flex-col justify-end pb-24 md:pb-32 items-center overflow-hidden">
         
-        {/* Background Image - Full Clarity */}
+        {/* Background Image Layer */}
         <div className="absolute inset-0 z-0">
-          {/* ✅ FIX: Removed 'priority' prop from native img tag */}
           <img
             src="/hero-bg.jpg"
             alt="Modern Living Room"
             className="w-full h-full object-cover object-center"
           />
           
-          {/* Ultra-Subtle Edge Gradient: Only darkens top/bottom 15% for text safety */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/30" />
+          {/* Gradient Overlay - Darkens top for text, transparent at bottom for furniture clarity */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/20 to-transparent" />
         </div>
 
-        <div className="relative z-10 w-full max-w-4xl mx-auto text-center space-y-6 md:space-y-8 px-4 sm:px-6">
+        {/* Content Container - Now anchored to bottom area */}
+        <div className="relative z-10 w-full max-w-4xl mx-auto text-center space-y-6 px-4 sm:px-6">
+          
+          {/* White Text with Shadow Safety Net */}
           <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight drop-shadow-2xl">
             Find Your Next Home in Kenya
           </h1>
@@ -209,8 +213,8 @@ export default function HomePage() {
             Verified rentals and properties for sale. Your link to your next home.
           </p>
 
-          {/* Solid White Search Box - Crisp & Clean */}
-          <div className="w-full bg-white rounded-2xl shadow-2xl p-4 md:p-6 mt-8 border border-white/20">
+          {/* Solid Opaque Search Card - Sits Over Furniture/Darker Area */}
+          <div className="w-full bg-white rounded-2xl shadow-2xl p-4 md:p-6 border-none">
             <div className="flex flex-col gap-3 md:gap-4">
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/40 h-5 w-5" />
@@ -242,8 +246,6 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-        
-        {/* ✅ REMOVED THE WHITISH FADE - Clean Sharp Edge Instead */}
       </section>
 
       {/* Listings Section */}
