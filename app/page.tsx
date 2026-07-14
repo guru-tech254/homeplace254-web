@@ -157,7 +157,7 @@ export default function HomePage() {
   <img 
     src="/logo.png" 
     alt="HomePlace254 Logo" 
-    className="h-16 md:h-18 w-auto object-contain" 
+    className="h-16 md:h-14 w-auto object-contain" 
   />
 </Link>
 
