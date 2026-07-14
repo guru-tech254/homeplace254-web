@@ -148,22 +148,27 @@ export default function HomePage() {
     <div className="min-h-screen bg-mist-white flex flex-col">
       {/* ✅ MOBILE-OPTIMIZED HEADER */}
             {/* ✅ FIXED MOBILE HEADER */}
+            {/* ✅ UPDATED HEADER WITH NEW LOGO */}
       <header className="bg-deep-navy shadow-md sticky top-0 z-[60]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 md:h-24 flex items-center justify-between">
           
-          {/* Logo - Always Visible */}
-          <Link href="/" className="flex items-center gap-3 bg-white rounded-lg p-1.5 shadow-sm shrink-0">
-            <img src="/logo.png" alt="HomePlace254 Logo" className="h-12 w-auto object-contain" />
-          </Link>
+          {/* Logo Container - Adjusted for Wider Horizontal Logo */}
+          <Link href="/" className="flex items-center shrink-0 bg-white rounded-xl p-2 shadow-lg/20">
+  <img 
+    src="/logo.png" 
+    alt="HomePlace254 Logo" 
+    className="h-16 md:h-18 w-auto object-contain" 
+  />
+</Link>
 
-          {/* Desktop Nav - Hidden on Mobile */}
+          {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-8">
             <Link href="/" className="text-white font-semibold hover:text-amber-gold transition-colors">Home</Link>
             <Link href="#listings" className="text-white/80 hover:text-amber-gold transition-colors">Browse Listings</Link>
             <Link href="/auth/login" className="bg-amber-gold text-white px-5 py-2.5 rounded-lg font-semibold hover:brightness-90 transition-all">Portal</Link>
           </nav>
 
-          {/* ✅ Mobile Menu Button - Visible ONLY on Mobile */}
+          {/* Mobile Menu Toggle */}
           <button 
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
             className="md:hidden text-white p-2 rounded-lg hover:bg-white/10 active:bg-white/20 transition-colors"

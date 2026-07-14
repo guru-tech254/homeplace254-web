@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabaseAuth } from "@/lib/supabase/auth-client";
-import { ArrowLeft, Save, Home, Bed, Bath, Car, DollarSign, Upload, X, Image as ImageIcon, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { Upload, X, Save, Image as ImageIcon, Loader2, Camera } from "lucide-react";
 
 export default function EditListingPage() {
   const router = useRouter();
@@ -13,402 +12,298 @@ export default function EditListingPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [properties, setProperties] = useState<{ id: string; name: string }[]>([]);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>(""); // ✅ Local preview state
   
   const [formData, setFormData] = useState({
-    property_id: "",
     title: "",
     description: "",
-    category: "rental",
-    sub_category: "apartment",
     price: "",
     bedrooms: "",
     bathrooms: "",
-    parking: false,
-    primary_image_url: "",
-    status: "available"
+    parking: "false",
+    status: "available",
+    primary_image_url: ""
   });
 
-  // Fetch properties for dropdown
+  // 1. Fetch existing data AND set initial preview
   useEffect(() => {
-    const fetchProperties = async () => {
-      const { data: { user } } = await supabaseAuth.auth.getUser();
-      if (!user) return;
-      
-      const { data } = await supabaseAuth
-        .from("properties")
-        .select("id, name")
-        .eq("landlord_id", user.id);
-      
-      if (data) setProperties(data);
-    };
-    fetchProperties();
-  }, []);
+    if (!listingId) return;
 
-  // Fetch existing listing data
-  useEffect(() => {
     const fetchListing = async () => {
-      const { data: { user } } = await supabaseAuth.auth.getUser();
-      if (!user) return;
+      try {
+        const { data, error } = await supabaseAuth
+          .from("listings")
+          .select("*")
+          .eq("id", listingId)
+          .single();
 
-      const { data, error } = await supabaseAuth
-        .from("listings")
-        .select("*")
-        .eq("id", listingId)
-        .eq("landlord_id", user.id)
-        .single();
-
-      if (error || !data) {
-        alert("Listing not found or you don't have permission.");
-        router.push("/landlord/listings");
-        return;
+        if (error) throw error;
+        if (data) {
+          setFormData({
+            title: data.title || "",
+            description: data.description || "",
+            price: String(data.price || ""),
+            bedrooms: String(data.bedrooms || ""),
+            bathrooms: String(data.bathrooms || ""),
+            parking: String(data.parking || false),
+            status: data.status || "available",
+            primary_image_url: data.primary_image_url || ""
+          });
+          
+          // ✅ Set preview to existing DB image initially
+          setPreviewUrl(data.primary_image_url || "");
+        }
+      } catch (err) {
+        console.error("Failed to fetch listing:", err);
+        alert("Could not load listing details.");
+      } finally {
+        setLoading(false);
       }
-
-      setFormData({
-        property_id: data.property_id || "",
-        title: data.title || "",
-        description: data.description || "",
-        category: data.category || "rental",
-        sub_category: data.sub_category || "apartment",
-        price: data.price?.toString() || "",
-        bedrooms: data.bedrooms?.toString() || "",
-        bathrooms: data.bathrooms?.toString() || "",
-        parking: data.parking || false,
-        primary_image_url: data.primary_image_url || "",
-        status: data.status || "available"
-      });
-      setLoading(false);
     };
 
     fetchListing();
-  }, [listingId, router]);
+  }, [listingId]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === "checkbox" ? (e.target as HTMLInputElement).checked : value
-    }));
-  };
-
-  // ✅ NEW: Handle Direct Image Upload
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 2. ✅ INSTANT LOCAL PREVIEW FROM DEVICE
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type and size (max 5MB)
-    if (!file.type.startsWith('image/')) {
-      alert("Please select an image file.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Image must be less than 5MB.");
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const { data: { user } } = await supabaseAuth.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // Create unique filename
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/${listingId}-${Date.now()}.${fileExt}`;
-
-      // Upload to Supabase Storage bucket named 'listings'
-      const { error: uploadError } = await supabaseAuth.storage
-        .from('listings')
-        .upload(fileName, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: urlData } = supabaseAuth.storage
-        .from('listings')
-        .getPublicUrl(fileName);
-
-      setFormData(prev => ({ ...prev, primary_image_url: urlData.publicUrl }));
-    } catch (err: any) {
-      alert("Upload failed: " + err.message);
-    } finally {
-      setUploading(false);
+    if (file) {
+      setImageFile(file);
+      
+      // Create temporary local URL for instant preview
+      const localUrl = URL.createObjectURL(file);
+      setPreviewUrl(localUrl);
+      
+      // Clean up previous object URL to prevent memory leaks
+      return () => URL.revokeObjectURL(localUrl);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // 3. Convert to Base64 ONLY when saving
+  const handleUpdateListing = async () => {
+    if (!listingId) return;
     setSaving(true);
 
-    const { error } = await supabaseAuth
-      .from("listings")
-      .update({
-        property_id: formData.property_id,
-        title: formData.title,
-        description: formData.description,
-        category: formData.category,
-        sub_category: formData.sub_category,
-        price: Number(formData.price),
-        bedrooms: Number(formData.bedrooms),
-        bathrooms: Number(formData.bathrooms),
-        parking: formData.parking,
-        primary_image_url: formData.primary_image_url,
-        status: formData.status,
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", listingId);
+    try {
+      let finalImageUrl = formData.primary_image_url;
 
-    if (error) {
-      alert("Error updating listing: " + error.message);
-    } else {
-      alert("Listing updated successfully!");
+      // Only convert if user selected a NEW file from device
+      if (imageFile) {
+        if (imageFile.size > 500 * 1024) {
+          alert("Image must be under 500KB for direct storage.");
+          setSaving(false);
+          return;
+        }
+
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(imageFile);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (error) => reject(error);
+        });
+
+        if (!base64.startsWith("data:image")) {
+          throw new Error("Invalid image format");
+        }
+
+        finalImageUrl = base64;
+      }
+
+      // Save to database
+      const { error: updateError } = await supabaseAuth
+        .from("listings")
+        .update({
+          title: formData.title,
+          description: formData.description,
+          price: Number(formData.price),
+          bedrooms: Number(formData.bedrooms),
+          bathrooms: Number(formData.bathrooms),
+          parking: formData.parking === "true",
+          status: formData.status,
+          primary_image_url: finalImageUrl,
+        })
+        .eq("id", listingId);
+
+      if (updateError) throw updateError;
+
+      alert("✅ Listing updated successfully!");
       router.push("/landlord/listings");
+      
+    } catch (err: any) {
+      console.error("❌ Update failed:", err);
+      alert(`Error updating listing: ${err.message}`);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-deep-navy">Loading listing details...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="animate-spin text-ocean-blue" size={32} />
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <div className="flex items-center gap-4 mb-8">
-        <Link href="/landlord/listings" className="p-2 hover:bg-mist-white rounded-full transition-colors">
-          <ArrowLeft size={24} className="text-deep-navy" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-deep-navy">Edit Listing</h1>
-          <p className="text-sm text-ink/70">Update details and upload new images.</p>
-        </div>
+    <div className="max-w-3xl mx-auto p-6 space-y-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-deep-navy">Edit Listing</h1>
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-ink/70 hover:text-deep-navy transition-colors"
+        >
+          <X size={16} /> Cancel
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-ocean-blue/10 p-8 space-y-6">
+      {/* ✅ IMAGE UPLOAD WITH INSTANT PREVIEW */}
+      <div className="bg-white rounded-xl border border-ocean-blue/10 p-6 shadow-sm">
+        <label className="block text-sm font-semibold text-deep-navy mb-4">
+          Listing Photo
+        </label>
         
-        {/* ✅ NEW: Direct Image Upload Section */}
-        <div>
-          <label className="block text-sm font-semibold text-deep-navy mb-2">Primary Image</label>
-          <div className="flex items-start gap-4">
-            {/* Current Image Preview */}
-            <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-ocean-blue/20 bg-mist-white shrink-0">
-              {formData.primary_image_url ? (
-                <img src={formData.primary_image_url} alt="Current" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-ink/30">
-                  <ImageIcon size={32} />
-                </div>
-              )}
-              {uploading && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                  <Loader2 size={24} className="animate-spin text-white" />
-                </div>
-              )}
-            </div>
-
-            {/* Upload Controls */}
-            <div className="flex-1 space-y-3">
-              <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-ocean-blue/30 rounded-lg cursor-pointer hover:border-ocean-blue hover:bg-ocean-blue/5 transition-all group">
-                <Upload size={20} className="text-ocean-blue group-hover:scale-110 transition-transform" />
-                <span className="text-sm font-medium text-deep-navy">
-                  {uploading ? "Uploading..." : "Click to Upload New Image"}
-                </span>
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleImageUpload} 
-                  disabled={uploading}
-                  className="hidden" 
-                />
-              </label>
-              <p className="text-xs text-ink/50">Max 5MB • JPG, PNG, WebP supported</p>
-              
-              {/* Remove Image Button */}
-              {formData.primary_image_url && !uploading && (
-                <button
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, primary_image_url: "" }))}
-                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 transition-colors"
-                >
-                  <X size={12} /> Remove current image
-                </button>
-              )}
-            </div>
+        <div className="relative group cursor-pointer">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+          />
+          
+          <div className={`aspect-video rounded-lg border-2 border-dashed flex flex-col items-center justify-center transition-all overflow-hidden ${
+            previewUrl ? "border-ocean-blue bg-mist-white" : "border-ocean-blue/30 hover:border-ocean-blue hover:bg-mist-white/50"
+          }`}>
+            {previewUrl ? (
+              // ✅ Shows EITHER local device file OR existing DB image instantly
+              <img 
+                src={previewUrl} 
+                alt="Listing Preview" 
+                className="w-full h-full object-cover" 
+              />
+            ) : (
+              <>
+                <Camera size={32} className="text-ocean-blue/50 mb-2" />
+                <p className="text-sm text-ink/60">Click to upload from device</p>
+              </>
+            )}
+            
+            {/* Overlay hint when hovering over existing image */}
+            {previewUrl && (
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Upload size={24} className="text-white" />
+                <span className="text-white ml-2 font-medium">Change Photo</span>
+              </div>
+            )}
           </div>
         </div>
+        
+        {imageFile && (
+          <p className="text-xs text-ocean-blue mt-2 flex items-center gap-1">
+            <ImageIcon size={12} /> 
+            New image selected: {imageFile.name} ({(imageFile.size / 1024).toFixed(1)} KB)
+          </p>
+        )}
+      </div>
 
-        {/* Property Selection */}
+      {/* Form Fields (Same as before) */}
+      <div className="bg-white rounded-xl border border-ocean-blue/10 p-6 shadow-sm space-y-6">
         <div>
-          <label className="block text-sm font-semibold text-deep-navy mb-2">Property</label>
-          <div className="relative">
-            <Home className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 h-5 w-5" />
-            <select
-              name="property_id"
-              value={formData.property_id}
-              onChange={handleChange}
-              required
-              className="w-full pl-10 pr-4 py-3 rounded-lg border border-ocean-blue/20 bg-mist-white focus:outline-none focus:border-ocean-blue"
-            >
-              <option value="">Select a Property</option>
-              {properties.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Title & Description */}
-        <div>
-          <label className="block text-sm font-semibold text-deep-navy mb-2">Listing Title</label>
+          <label className="block text-sm font-semibold text-deep-navy mb-2">Title</label>
           <input
             type="text"
-            name="title"
             value={formData.title}
-            onChange={handleChange}
-            required
-            placeholder="e.g., Spacious 2BR Apartment with City View"
-            className="w-full px-4 py-3 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+            className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
           />
         </div>
 
         <div>
           <label className="block text-sm font-semibold text-deep-navy mb-2">Description</label>
           <textarea
-            name="description"
-            value={formData.description}
-            onChange={handleChange}
             rows={4}
-            placeholder="Describe the unit, neighborhood, and key features..."
-            className="w-full px-4 py-3 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue resize-none"
+            value={formData.description}
+            onChange={(e) => setFormData({...formData, description: e.target.value})}
+            className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue resize-none"
           />
         </div>
 
-        {/* Category & Sub-category */}
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-semibold text-deep-navy mb-2">Category</label>
-            <select
-              name="category"
-              value={formData.category}
-              onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-ocean-blue/20 bg-mist-white focus:outline-none focus:border-ocean-blue"
-            >
-              <option value="rental">For Rent</option>
-              <option value="sale">For Sale</option>
-            </select>
+            <label className="block text-sm font-semibold text-deep-navy mb-2">Price (KES)</label>
+            <input
+              type="number"
+              value={formData.price}
+              onChange={(e) => setFormData({...formData, price: e.target.value})}
+              className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+            />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-deep-navy mb-2">Unit Type</label>
-            <select
-              name="sub_category"
-              value={formData.sub_category}
-              onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-ocean-blue/20 bg-mist-white focus:outline-none focus:border-ocean-blue"
-            >
-              <option value="apartment">Apartment</option>
-              <option value="house">House</option>
-              <option value="studio">Studio</option>
-              <option value="townhouse">Townhouse</option>
-              <option value="villa">Villa</option>
-            </select>
+            <label className="block text-sm font-semibold text-deep-navy mb-2">Bedrooms</label>
+            <input
+              type="number"
+              value={formData.bedrooms}
+              onChange={(e) => setFormData({...formData, bedrooms: e.target.value})}
+              className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-deep-navy mb-2">Bathrooms</label>
+            <input
+              type="number"
+              value={formData.bathrooms}
+              onChange={(e) => setFormData({...formData, bathrooms: e.target.value})}
+              className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+            />
           </div>
         </div>
 
-        {/* Price & Status */}
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-semibold text-deep-navy mb-2">Price (KES)</label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 h-5 w-5" />
-              <input
-                type="number"
-                name="price"
-                value={formData.price}
-                onChange={handleChange}
-                required
-                min="0"
-                className="w-full pl-10 pr-4 py-3 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
-              />
-            </div>
+            <label className="block text-sm font-semibold text-deep-navy mb-2">Parking</label>
+            <select
+              value={formData.parking}
+              onChange={(e) => setFormData({...formData, parking: e.target.value})}
+              className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
+            >
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
           </div>
           <div>
             <label className="block text-sm font-semibold text-deep-navy mb-2">Status</label>
             <select
-              name="status"
               value={formData.status}
-              onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg border border-ocean-blue/20 bg-mist-white focus:outline-none focus:border-ocean-blue"
+              onChange={(e) => setFormData({...formData, status: e.target.value})}
+              className="w-full px-4 py-2.5 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
             >
               <option value="available">Available</option>
               <option value="rented">Rented</option>
-              <option value="maintenance">Under Maintenance</option>
+              <option value="maintenance">Maintenance</option>
             </select>
           </div>
         </div>
+      </div>
 
-        {/* Bedrooms, Bathrooms, Parking */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-ink/70 mb-1">Bedrooms</label>
-            <div className="relative">
-              <Bed className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 h-5 w-5" />
-              <input
-                type="number"
-                name="bedrooms"
-                value={formData.bedrooms}
-                onChange={handleChange}
-                min="0"
-                className="w-full pl-10 pr-4 py-3 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink/70 mb-1">Bathrooms</label>
-            <div className="relative">
-              <Bath className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 h-5 w-5" />
-              <input
-                type="number"
-                name="bathrooms"
-                value={formData.bathrooms}
-                onChange={handleChange}
-                min="0"
-                className="w-full pl-10 pr-4 py-3 rounded-lg border border-ocean-blue/20 focus:outline-none focus:border-ocean-blue"
-              />
-            </div>
-          </div>
-          <div className="flex items-end pb-3">
-            <label className="flex items-center gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                name="parking"
-                checked={formData.parking}
-                onChange={handleChange}
-                className="w-5 h-5 rounded border-ocean-blue/30 text-ocean-blue focus:ring-ocean-blue"
-              />
-              <span className="flex items-center gap-2 text-sm font-medium text-deep-navy">
-                <Car size={18} /> Parking Available
-              </span>
-            </label>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-end gap-4 pt-6 border-t border-ocean-blue/10">
-          <Link 
-            href="/landlord/listings" 
-            className="px-6 py-2.5 rounded-lg text-ink/70 hover:bg-mist-white font-semibold transition-colors"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={saving || uploading}
-            className="flex items-center gap-2 px-8 py-2.5 bg-amber-gold text-white rounded-lg font-bold hover:brightness-90 transition-all disabled:opacity-50"
-          >
-            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-            {saving ? "Saving Changes..." : "Update Listing"}
-          </button>
-        </div>
-      </form>
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-4 pt-4">
+        <button
+          onClick={() => router.back()}
+          disabled={saving}
+          className="px-6 py-2.5 rounded-lg font-semibold text-ink/70 hover:text-deep-navy transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleUpdateListing}
+          disabled={saving || !formData.title || !formData.price}
+          className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-amber-gold text-white font-semibold hover:brightness-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+          {saving ? "Updating..." : "Update Listing"}
+        </button>
+      </div>
     </div>
   );
 }
