@@ -1,9 +1,14 @@
-interface
 "use client";
 
 import { useEffect, useState, useRef } from "react";
 import { supabaseAuth } from "@/lib/supabase/auth-client";
 import { X, MessageCircle, Send, Loader2 } from "lucide-react";
+
+interface ChatWidgetProps {
+  listingId?: string | null;
+  landlordId?: string | null;
+  onClose?: () => void;
+}
 
 const getAnonymousId = () => {
   if (typeof window === "undefined") return null;
@@ -15,10 +20,15 @@ const getAnonymousId = () => {
   return anonId;
 };
 
-export default function ChatWidget() {
+export default function ChatWidget({ 
+  listingId: propListingId, 
+  landlordId: propLandlordId, 
+  onClose 
+}: ChatWidgetProps = {}) {
+  
   const [isOpen, setIsOpen] = useState(false);
-  const [listingId, setListingId] = useState<string | null>(null);
-  const [landlordId, setLandlordId] = useState<string | null>(null);
+  const [listingId, setListingId] = useState<string | null>(propListingId || null);
+  const [landlordId, setLandlordId] = useState<string | null>(propLandlordId || null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
@@ -27,75 +37,94 @@ export default function ChatWidget() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentUserRef = useRef<string | null>(null);
+  const initializedRef = useRef(false);
+  const isReadyRef = useRef(false); // ✅ NEW: Tracks if user ID is loaded
 
+  // Initialize user identity FIRST
   useEffect(() => {
     const initUser = async () => {
       const { data: { user } } = await supabaseAuth.auth.getUser();
       currentUserRef.current = user?.id || getAnonymousId();
+      isReadyRef.current = true; // ✅ Mark as ready
+      
+      // If props were already passed, trigger initialization now that we're ready
+      if (propListingId && propLandlordId && !initializedRef.current) {
+        initializeChat(propListingId, propLandlordId);
+      }
     };
     initUser();
   }, []);
 
+  const initializeChat = async (lId: string, llId: string) => {
+    // ✅ SAFETY CHECK: Don't proceed until user ID is ready
+    if (!isReadyRef.current || !currentUserRef.current) return;
+    if (initializedRef.current) return;
+    
+    initializedRef.current = true;
+    setListingId(lId);
+    setLandlordId(llId);
+    setIsOpen(true);
+    setLoading(true);
+
+    try {
+      const userId = currentUserRef.current!;
+
+      const { data: existing } = await supabaseAuth
+        .from("conversations")
+        .select("id")
+        .eq("listing_id", lId)
+        .eq("landlord_id", llId)
+        .eq("seeker_session_id", userId)
+        .single();
+
+      let convId = existing?.id;
+
+      if (!convId) {
+        const { data: newConv, error } = await supabaseAuth
+          .from("conversations")
+          .insert({
+            listing_id: lId,
+            landlord_id: llId,
+            seeker_session_id: userId,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        convId = newConv.id;
+      }
+
+      setConversationId(convId);
+
+      const { data: msgs } = await supabaseAuth
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", convId)
+        .order("created_at", { ascending: true });
+
+      setMessages(msgs || []);
+    } catch (err: any) {
+      console.error("Chat initialization failed:", err);
+      alert("Could not open chat: " + (err.message || "Unknown error"));
+      setIsOpen(false);
+      initializedRef.current = false; // Reset so it can retry
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle window events
   useEffect(() => {
     const handleOpenChat = async (event: Event) => {
       const customEvent = event as CustomEvent;
       if (!customEvent.detail?.listingId || !customEvent.detail?.landlordId) return;
-
-      setListingId(customEvent.detail.listingId);
-      setLandlordId(customEvent.detail.landlordId);
-      setIsOpen(true);
-      setLoading(true);
-
-      try {
-        const userId = currentUserRef.current;
-        if (!userId) throw new Error("Could not identify user");
-
-        const { data: existing } = await supabaseAuth
-          .from("conversations")
-          .select("id")
-          .eq("listing_id", customEvent.detail.listingId)
-          .eq("landlord_id", customEvent.detail.landlordId)
-          .eq("seeker_session_id", userId)
-          .single();
-
-        let convId = existing?.id;
-
-        if (!convId) {
-          const { data: newConv, error } = await supabaseAuth
-            .from("conversations")
-            .insert({
-              listing_id: customEvent.detail.listingId,
-              landlord_id: customEvent.detail.landlordId,
-              seeker_session_id: userId,
-            })
-            .select()
-            .single();
-
-          if (error) throw error;
-          convId = newConv.id;
-        }
-
-        setConversationId(convId);
-
-        const { data: msgs } = await supabaseAuth
-          .from("messages")
-          .select("*")
-          .eq("conversation_id", convId)
-          .order("created_at", { ascending: true });
-
-        setMessages(msgs || []);
-      } catch (err: any) {
-        console.error("Chat initialization failed:", err);
-        alert("Could not open chat: " + (err.message || "Unknown error"));
-        setIsOpen(false);
-      } finally {
-        setLoading(false);
-      }
+      
+      initializedRef.current = false;
+      await initializeChat(customEvent.detail.listingId, customEvent.detail.landlordId);
     };
 
-    const listener = (e: Event) => handleOpenChat(e as CustomEvent);
-    window.addEventListener("open-chat", listener);
-    return () => window.removeEventListener("open-chat", listener);
+    window.addEventListener("open-chat", handleOpenChat);
+    return () => window.removeEventListener("open-chat", handleOpenChat);
   }, []);
 
   useEffect(() => {
@@ -111,11 +140,10 @@ export default function ChatWidget() {
       const userId = currentUserRef.current;
       if (!userId) throw new Error("Not identified");
 
-      // ✅ HARDCODED: Public widget ALWAYS sends as seeker
       const { error } = await supabaseAuth.from("messages").insert({
         conversation_id: conversationId,
         sender_id: userId,
-        sender_role: "seeker", 
+        sender_role: "seeker",
         content: message.trim(),
       });
 
@@ -156,7 +184,10 @@ export default function ChatWidget() {
             </div>
           </div>
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={() => {
+              setIsOpen(false);
+              if (onClose) onClose();
+            }}
             className="p-2 hover:bg-white/10 rounded-full transition-colors shrink-0"
           >
             <X size={20} />
@@ -175,7 +206,6 @@ export default function ChatWidget() {
             </div>
           ) : (
             messages.map((msg) => {
-              // ✅ UNIVERSAL RULE: Only 'landlord' goes right. Everything else (including null/empty) goes left.
               const isLandlord = msg.sender_role === 'landlord';
               
               return (
