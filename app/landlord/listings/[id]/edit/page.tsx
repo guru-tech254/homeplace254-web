@@ -13,7 +13,7 @@ export default function EditListingPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>(""); // ✅ Local preview state
+  const [previewUrl, setPreviewUrl] = useState<string>("");
   
   const [formData, setFormData] = useState({
     title: "",
@@ -51,7 +51,6 @@ export default function EditListingPage() {
             primary_image_url: data.primary_image_url || ""
           });
           
-          // ✅ Set preview to existing DB image initially
           setPreviewUrl(data.primary_image_url || "");
         }
       } catch (err) {
@@ -65,17 +64,15 @@ export default function EditListingPage() {
     fetchListing();
   }, [listingId]);
 
-  // 2. ✅ INSTANT LOCAL PREVIEW FROM DEVICE
+  // 2. INSTANT LOCAL PREVIEW FROM DEVICE
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setImageFile(file);
       
-      // Create temporary local URL for instant preview
       const localUrl = URL.createObjectURL(file);
       setPreviewUrl(localUrl);
       
-      // Clean up previous object URL to prevent memory leaks
       return () => URL.revokeObjectURL(localUrl);
     }
   };
@@ -90,8 +87,11 @@ export default function EditListingPage() {
 
       // Only convert if user selected a NEW file from device
       if (imageFile) {
-        if (imageFile.size > 500 * 1024) {
-          alert("Image must be under 500KB for direct storage.");
+        // ✅ UPDATED: Increased limit from 500KB to 10MB
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+        
+        if (imageFile.size > MAX_FILE_SIZE) {
+          alert("Image must be under 10MB for direct storage.");
           setSaving(false);
           return;
         }
@@ -158,7 +158,7 @@ export default function EditListingPage() {
         </button>
       </div>
 
-      {/* ✅ IMAGE UPLOAD WITH INSTANT PREVIEW */}
+      {/* IMAGE UPLOAD WITH INSTANT PREVIEW */}
       <div className="bg-white rounded-xl border border-ocean-blue/10 p-6 shadow-sm">
         <label className="block text-sm font-semibold text-deep-navy mb-4">
           Listing Photo
@@ -176,7 +176,6 @@ export default function EditListingPage() {
             previewUrl ? "border-ocean-blue bg-mist-white" : "border-ocean-blue/30 hover:border-ocean-blue hover:bg-mist-white/50"
           }`}>
             {previewUrl ? (
-              // ✅ Shows EITHER local device file OR existing DB image instantly
               <img 
                 src={previewUrl} 
                 alt="Listing Preview" 
@@ -189,7 +188,6 @@ export default function EditListingPage() {
               </>
             )}
             
-            {/* Overlay hint when hovering over existing image */}
             {previewUrl && (
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Upload size={24} className="text-white" />
@@ -202,12 +200,12 @@ export default function EditListingPage() {
         {imageFile && (
           <p className="text-xs text-ocean-blue mt-2 flex items-center gap-1">
             <ImageIcon size={12} /> 
-            New image selected: {imageFile.name} ({(imageFile.size / 1024).toFixed(1)} KB)
+            New image selected: {imageFile.name} ({(imageFile.size / (1024 * 1024)).toFixed(2)} MB)
           </p>
         )}
       </div>
 
-      {/* Form Fields (Same as before) */}
+      {/* Form Fields */}
       <div className="bg-white rounded-xl border border-ocean-blue/10 p-6 shadow-sm space-y-6">
         <div>
           <label className="block text-sm font-semibold text-deep-navy mb-2">Title</label>
